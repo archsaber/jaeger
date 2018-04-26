@@ -29,6 +29,11 @@ const (
 	suffixServerHostPort      = "server-host-port"
 	collectorHostPort         = "collector.host-port"
 	httpServerHostPort        = "http-server.host-port"
+	ddServerEnabled           = "dd-server.enabled"
+	ddServerWorkers           = "dd-server.workers"
+	ddServerHostPort          = "dd-server.host-port"
+	ddServerConnLimit         = "dd-server.conn-limit"
+	ddServerReceiverTimeout   = "dd-server.receiver-timeout"
 	discoveryMinPeers         = "discovery.min-peers"
 )
 
@@ -63,6 +68,26 @@ func AddFlags(flags *flag.FlagSet) {
 		discoveryMinPeers,
 		defaultMinPeers,
 		"if using service discovery, the min number of connections to maintain to the backend")
+	flags.String(
+		ddServerHostPort,
+		defaultDDServerHostPort,
+		"host:port of the server to receive traces from datadog agents")
+	flags.Int(
+		ddServerConnLimit,
+		defaultDDConnLimit,
+		"connection limit of the dd-trace processor receiving traces")
+	flags.Int(
+		ddServerReceiverTimeout,
+		defaultDDReceiverTimeout,
+		"receiver timeout of the dd-trace processor receiving traces")
+	flags.Bool(
+		ddServerEnabled,
+		defaultDDServerEnabled,
+		"whether dd-trace processor is enabled")
+	flags.Int(
+		ddServerWorkers,
+		defaultDDServerWorkers,
+		"how many workers the dd-trace processor should run")
 }
 
 // InitFromViper initializes Builder with properties retrieved from Viper.
@@ -83,6 +108,13 @@ func (b *Builder) InitFromViper(v *viper.Viper) *Builder {
 		b.CollectorHostPorts = strings.Split(v.GetString(collectorHostPort), ",")
 	}
 	b.HTTPServer.HostPort = v.GetString(httpServerHostPort)
+
+	b.DDTraceProcessorConfig.Enabled = v.GetBool(ddServerEnabled)
+	b.DDTraceProcessorConfig.NumProcessors = v.GetInt(ddServerWorkers)
+	b.DDTraceProcessorConfig.HostPort = v.GetString(ddServerHostPort)
+	b.DDTraceProcessorConfig.ConnectionLimit = v.GetInt(ddServerConnLimit)
+	b.DDTraceProcessorConfig.ReceiverTimeout = v.GetInt(ddServerReceiverTimeout)
+
 	b.DiscoveryMinPeers = v.GetInt(discoveryMinPeers)
 	return b
 }

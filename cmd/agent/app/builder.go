@@ -26,6 +26,7 @@ import (
 
 	"github.com/jaegertracing/jaeger/cmd/agent/app/httpserver"
 	"github.com/jaegertracing/jaeger/cmd/agent/app/processors"
+	"github.com/jaegertracing/jaeger/cmd/agent/app/processors/ddtrace"
 	"github.com/jaegertracing/jaeger/cmd/agent/app/reporter"
 	tchreporter "github.com/jaegertracing/jaeger/cmd/agent/app/reporter/tchannel"
 	"github.com/jaegertracing/jaeger/cmd/agent/app/servers"
@@ -42,6 +43,12 @@ const (
 	defaultMinPeers      = 3
 
 	defaultHTTPServerHostPort = ":5778"
+
+	defaultDDServerEnabled   = false
+	defaultDDServerWorkers   = 10
+	defaultDDServerHostPort  = "localhost:8126"
+	defaultDDConnLimit       = 2000
+	defaultDDReceiverTimeout = 0
 
 	jaegerModel Model = "jaeger"
 	zipkinModel       = "zipkin"
@@ -67,9 +74,10 @@ var (
 
 // Builder Struct to hold configurations
 type Builder struct {
-	Processors []ProcessorConfiguration `yaml:"processors"`
-	HTTPServer HTTPServerConfiguration  `yaml:"httpServer"`
-	Metrics    jmetrics.Builder         `yaml:"metrics"`
+	Processors             []ProcessorConfiguration `yaml:"processors"`
+	HTTPServer             HTTPServerConfiguration  `yaml:"httpServer"`
+	DDTraceProcessorConfig ddtrace.ProcessorConfig  `yaml:"ddServer"`
+	Metrics                jmetrics.Builder         `yaml:"metrics"`
 
 	tchreporter.Builder `yaml:",inline"`
 
@@ -148,7 +156,7 @@ func (b *Builder) CreateAgent(logger *zap.Logger) (*Agent, error) {
 
 // GetProcessors creates Processors with attached Reporter
 func (b *Builder) GetProcessors(rep reporter.Reporter, mFactory metrics.Factory) ([]processors.Processor, error) {
-	retMe := make([]processors.Processor, len(b.Processors))
+	retMe := make([]processors.Processor, len(b.Processors)+1)
 	for idx, cfg := range b.Processors {
 		protoFactory, ok := protocolFactoryMap[cfg.Protocol]
 		if !ok {
@@ -173,6 +181,11 @@ func (b *Builder) GetProcessors(rep reporter.Reporter, mFactory metrics.Factory)
 		}
 		retMe[idx] = processor
 	}
+	ddTraceProcessor, err := b.DDTraceProcessorConfig.NewDDTraceProcessor(rep)
+	if err != nil {
+		return nil, err
+	}
+	retMe[len(b.Processors)] = ddTraceProcessor
 	return retMe, nil
 }
 

@@ -1,5 +1,5 @@
-hash: d40883d6de90a4a415db54f472ac90c848b7503cbcd2f1251396e19e91f25745
-updated: 2018-04-03T13:20:02.642056-04:00
+hash: c1562ec450968e1c97eed077499dcdd5a5b59e814ab3b111b1196839558164dc
+updated: 2018-04-26T20:18:50.584660376+05:30
 imports:
 - name: github.com/apache/thrift
   version: 53dd39833a08ce33582e5ff31fa18bb4735d6731
@@ -65,8 +65,16 @@ imports:
   - internal/lru
   - internal/murmur
   - internal/streams
+- name: github.com/gogo/protobuf
+  version: 1adfc126b41513cc696b209667c8656ea7aac67c
+  subpackages:
+  - gogoproto
+  - gogoproto/gogo.proto
+  - proto
+  - protoc-gen-gofaster
+  - protoc-gen-gogo/descriptor
 - name: github.com/golang/protobuf
-  version: 7cc19b78d562895b13596ddce7aafb59dd789318
+  version: 925541529c1fa6821df4e44ce2723319eb2be768
   subpackages:
   - proto
 - name: github.com/golang/snappy
@@ -84,6 +92,7 @@ imports:
   subpackages:
   - hcl/ast
   - hcl/parser
+  - hcl/printer
   - hcl/scanner
   - hcl/strconv
   - hcl/token
@@ -119,10 +128,10 @@ imports:
   subpackages:
   - ext
   - log
-- name: github.com/pelletier/go-buffruneio
-  version: df1e16fde7fc330a0ca68167c23bf7ed6ac31d6d
 - name: github.com/pelletier/go-toml
-  version: 439fbba1f887c286024370cb4f281ba815c4c7d7
+  version: acdc4509485b587f5e675510c4f2c63e90ff68a8
+- name: github.com/philhofer/fwd
+  version: bb6d471dc95d4fe11e432687f8b70ff496cf3136
 - name: github.com/pkg/errors
   version: 645ef00459ed84a119197bfb8d8205042c6df63d
 - name: github.com/pmezard/go-difflib
@@ -163,21 +172,25 @@ imports:
 - name: github.com/spf13/jwalterweatherman
   version: bccdd23ae5e51bd2b081814db093646c7af3d34d
 - name: github.com/spf13/pflag
-  version: e57e3eeb33f795204c1ca35f56c44f83227c6e66
+  version: 583c0c0531f06d5278b7d917446061adc344b5cd
 - name: github.com/spf13/viper
-  version: 25b30aa063fc18e48662b86996252eabdcf2f0c7
+  version: b5e8006cbee93ec955a89ab31e0e3ce3204f3736
 - name: github.com/stretchr/objx
-  version: 8a3f7159479fbc75b30357fbc48f380b7320f08e
+  version: a5cfa15c000af5f09784e5355969ba7eb66ef0de
 - name: github.com/stretchr/testify
   version: 12b6f73e6084dad08a7c6e575284b177ecafbc71
   subpackages:
   - assert
   - mock
   - require
+- name: github.com/tinylib/msgp
+  version: b2b6a672cf1e5b90748f79b8b81fc8c5cf0571a1
+  subpackages:
+  - msgp
 - name: github.com/uber-go/atomic
   version: 8474b86a5a6f79c443ce4b2992817ff32cf208b8
 - name: github.com/uber/jaeger-client-go
-  version: c107110d057826281414cb964f167bce5be17588
+  version: 3205d4aabc55c1a13b1e48d3db793bc8cd37bd16
   subpackages:
   - config
   - internal/baggage
@@ -224,16 +237,17 @@ imports:
 - name: go.uber.org/multierr
   version: 3c4937480c32f4c13a875a1829af76c98ca3d40a
 - name: go.uber.org/zap
-  version: 35aad584952c3e7020db7b839f6b102de6271f89
+  version: eeedf312bc6c57391d84767a4cd413f02a917974
   subpackages:
   - buffer
   - internal/bufferpool
   - internal/color
   - internal/exit
+  - internal/ztest
   - zapcore
   - zaptest
 - name: golang.org/x/net
-  version: b68f30494add4df6bd8ef5e82803f308e7f7c59c
+  version: 5f9ae10d9af5b1c89ae6904293b14b064d4ada23
   subpackages:
   - context
   - context/ctxhttp

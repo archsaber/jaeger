@@ -55,3 +55,17 @@ import:
 - package: github.com/go-openapi/validate
 - package: github.com/go-openapi/loads
 - package: github.com/elazarl/go-bindata-assetfs
+- package: github.com/gogo/protobuf
+  version: ^1.0.0
+  subpackages:
+  - gogoproto/gogo.proto
+  - protoc-gen-gofaster
+  - gogoproto
+- package: github.com/golang/protobuf
+  version: ^1.0.0
+- package: github.com/tinylib/msgp
+  version: ^1.0.2
+  subpackages:
+  - msgp
+- package: github.com/pelletier/go-toml
+  version: v1.1.0
