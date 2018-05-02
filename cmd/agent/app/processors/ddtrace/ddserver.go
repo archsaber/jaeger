@@ -54,7 +54,9 @@ type ProcessorConfig struct {
 	NumProcessors   int    `yaml:"workers"`
 }
 
-func (c ProcessorConfig) shouldStartDDTraceProcessor() bool {
+// ShouldStartDDTraceProcessor checks if the processor is enabled and
+// has non zero workers in the config
+func (c ProcessorConfig) ShouldStartDDTraceProcessor() bool {
 	return c.Enabled && c.NumProcessors > 0
 }
 
@@ -89,22 +91,17 @@ func (c ProcessorConfig) NewDDTraceProcessor(
 		maxRequestBodyLength: maxRequestBodyLength,
 		debug:                false,
 	}
-	if c.shouldStartDDTraceProcessor() {
-		// initialize the underlying transport
-		err := ddtraceProcessor.initTransport()
-		if err != nil {
-			return nil, err
-		}
+
+	// initialize the underlying transport
+	err := ddtraceProcessor.initTransport()
+	if err != nil {
+		return nil, err
 	}
 	return &ddtraceProcessor, nil
 }
 
 // Serve starts doing the HTTP server and is ready to receive traces
 func (r *Processor) Serve() {
-	if !r.conf.shouldStartDDTraceProcessor() || r.ln == nil {
-		return
-	}
-
 	r.processing.Add(r.conf.NumProcessors)
 	for i := 0; i < r.conf.NumProcessors; i++ {
 		go r.processDDTraces()
@@ -215,14 +212,13 @@ func (r *Processor) initTransport() error {
 	return nil
 }
 
+// Stop stops the processor
 func (r *Processor) Stop() {
-	if r.server != nil {
-		// close the server
-		expiry := time.Now().Add(20 * time.Second) // give it 20 seconds
-		ctx, cancel := context.WithDeadline(context.Background(), expiry)
-		defer cancel()
-		go r.server.Shutdown(ctx)
-	}
+	// close the server
+	expiry := time.Now().Add(20 * time.Second) // give it 20 seconds
+	ctx, cancel := context.WithDeadline(context.Background(), expiry)
+	defer cancel()
+	go r.server.Shutdown(ctx)
 
 	// close the workers by closing the channels from which they read
 	close(r.Traces)

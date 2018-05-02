@@ -156,7 +156,7 @@ func (b *Builder) CreateAgent(logger *zap.Logger) (*Agent, error) {
 
 // GetProcessors creates Processors with attached Reporter
 func (b *Builder) GetProcessors(rep reporter.Reporter, mFactory metrics.Factory) ([]processors.Processor, error) {
-	retMe := make([]processors.Processor, len(b.Processors)+1)
+	retMe := make([]processors.Processor, len(b.Processors))
 	for idx, cfg := range b.Processors {
 		protoFactory, ok := protocolFactoryMap[cfg.Protocol]
 		if !ok {
@@ -181,11 +181,13 @@ func (b *Builder) GetProcessors(rep reporter.Reporter, mFactory metrics.Factory)
 		}
 		retMe[idx] = processor
 	}
-	ddTraceProcessor, err := b.DDTraceProcessorConfig.NewDDTraceProcessor(rep)
-	if err != nil {
-		return nil, err
+	if b.DDTraceProcessorConfig.ShouldStartDDTraceProcessor() {
+		ddTraceProcessor, err := b.DDTraceProcessorConfig.NewDDTraceProcessor(rep)
+		if err != nil {
+			return nil, err
+		}
+		retMe = append(retMe, ddTraceProcessor)
 	}
-	retMe[len(b.Processors)] = ddTraceProcessor
 	return retMe, nil
 }
 
