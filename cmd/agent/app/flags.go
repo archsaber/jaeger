@@ -28,6 +28,7 @@ const (
 	suffixServerMaxPacketSize = "server-max-packet-size"
 	suffixServerHostPort      = "server-host-port"
 	collectorHostPort         = "collector.host-port"
+	authTokenFile             = "auth.token-file"
 	httpServerHostPort        = "http-server.host-port"
 	ddServerEnabled           = "dd-server.enabled"
 	ddServerWorkers           = "dd-server.workers"
@@ -60,6 +61,10 @@ func AddFlags(flags *flag.FlagSet) {
 		collectorHostPort,
 		"",
 		"comma-separated string representing host:ports of a static list of collectors to connect to directly (e.g. when not using service discovery)")
+	flags.String(
+		authTokenFile,
+		"",
+		"file containing auth token to be sent with every request to collector")
 	flags.String(
 		httpServerHostPort,
 		defaultHTTPServerHostPort,
@@ -107,6 +112,8 @@ func (b *Builder) InitFromViper(v *viper.Viper) *Builder {
 	if len(v.GetString(collectorHostPort)) > 0 {
 		b.CollectorHostPorts = strings.Split(v.GetString(collectorHostPort), ",")
 	}
+	b.TokenFile = v.GetString(authTokenFile)
+
 	b.HTTPServer.HostPort = v.GetString(httpServerHostPort)
 
 	b.DDTraceProcessorConfig.Enabled = v.GetBool(ddServerEnabled)
@@ -114,7 +121,5 @@ func (b *Builder) InitFromViper(v *viper.Viper) *Builder {
 	b.DDTraceProcessorConfig.HostPort = v.GetString(ddServerHostPort)
 	b.DDTraceProcessorConfig.ConnectionLimit = v.GetInt(ddServerConnLimit)
 	b.DDTraceProcessorConfig.ReceiverTimeout = v.GetInt(ddServerReceiverTimeout)
-
-	b.DiscoveryMinPeers = v.GetInt(discoveryMinPeers)
 	return b
 }

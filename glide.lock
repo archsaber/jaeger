@@ -1,5 +1,5 @@
-hash: c1562ec450968e1c97eed077499dcdd5a5b59e814ab3b111b1196839558164dc
-updated: 2018-04-26T20:18:50.584660376+05:30
+hash: 55a22920ef3e5d5f7b16bafaf61b1d4c0264d53d800ab3d7429b033cf1a7bf6b
+updated: 2018-05-05T12:15:10.721622094+05:30
 imports:
 - name: github.com/apache/thrift
   version: 53dd39833a08ce33582e5ff31fa18bb4735d6731
@@ -25,7 +25,7 @@ imports:
 - name: github.com/elazarl/go-bindata-assetfs
   version: 38087fe4dafb822e541b3f7955075cc1c30bd294
 - name: github.com/fsnotify/fsnotify
-  version: 30411dbcefb7a1da7e84f75530ad3abe4011b4f8
+  version: c2828203cd70a50dcccfb2761f8b1f8ceef9a8e9
 - name: github.com/go-kit/kit
   version: a9ca6725cbbea455e61c6bc8a1ed28e81eb3493b
   subpackages:
@@ -74,7 +74,7 @@ imports:
   - protoc-gen-gofaster
   - protoc-gen-gogo/descriptor
 - name: github.com/golang/protobuf
-  version: 925541529c1fa6821df4e44ce2723319eb2be768
+  version: b4deda0973fb4c70b50d226b1af49f3da59f5265
   subpackages:
   - proto
 - name: github.com/golang/snappy
@@ -190,7 +190,7 @@ imports:
 - name: github.com/uber-go/atomic
   version: 8474b86a5a6f79c443ce4b2992817ff32cf208b8
 - name: github.com/uber/jaeger-client-go
-  version: 3205d4aabc55c1a13b1e48d3db793bc8cd37bd16
+  version: b043381d944715b469fd6b37addfd30145ca1758
   subpackages:
   - config
   - internal/baggage
@@ -199,6 +199,7 @@ imports:
   - internal/throttler
   - log
   - rpcmetrics
+  - thrift
   - thrift-gen/agent
   - thrift-gen/baggage
   - thrift-gen/jaeger
@@ -233,7 +234,7 @@ imports:
 - name: github.com/VividCortex/gohistogram
   version: 51564d9861991fb0ad0f531c99ef602d0f9866e6
 - name: go.uber.org/atomic
-  version: 8474b86a5a6f79c443ce4b2992817ff32cf208b8
+  version: 1ea20fb1cbb1cc08cbd0d913a96dead89aa18289
 - name: go.uber.org/multierr
   version: 3c4937480c32f4c13a875a1829af76c98ca3d40a
 - name: go.uber.org/zap

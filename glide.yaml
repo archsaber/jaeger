@@ -69,3 +69,5 @@ import:
   - msgp
 - package: github.com/pelletier/go-toml
   version: v1.1.0
+- package: github.com/fsnotify/fsnotify
+  version: ~1.4.7

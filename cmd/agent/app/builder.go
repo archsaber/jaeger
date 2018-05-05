@@ -28,7 +28,7 @@ import (
 	"github.com/jaegertracing/jaeger/cmd/agent/app/processors"
 	"github.com/jaegertracing/jaeger/cmd/agent/app/processors/ddtrace"
 	"github.com/jaegertracing/jaeger/cmd/agent/app/reporter"
-	tchreporter "github.com/jaegertracing/jaeger/cmd/agent/app/reporter/tchannel"
+	httpreporter "github.com/jaegertracing/jaeger/cmd/agent/app/reporter/httpreporter"
 	"github.com/jaegertracing/jaeger/cmd/agent/app/servers"
 	"github.com/jaegertracing/jaeger/cmd/agent/app/servers/thriftudp"
 	jmetrics "github.com/jaegertracing/jaeger/pkg/metrics"
@@ -79,7 +79,7 @@ type Builder struct {
 	DDTraceProcessorConfig ddtrace.ProcessorConfig  `yaml:"ddServer"`
 	Metrics                jmetrics.Builder         `yaml:"metrics"`
 
-	tchreporter.Builder `yaml:",inline"`
+	httpreporter.Builder `yaml:",inline"`
 
 	otherReporters []reporter.Reporter
 	metricsFactory metrics.Factory
@@ -117,7 +117,7 @@ func (b *Builder) WithMetricsFactory(mf metrics.Factory) *Builder {
 	return b
 }
 
-func (b *Builder) createMainReporter(mFactory metrics.Factory, logger *zap.Logger) (*tchreporter.Reporter, error) {
+func (b *Builder) createMainReporter(mFactory metrics.Factory, logger *zap.Logger) (*httpreporter.Reporter, error) {
 	return b.CreateReporter(mFactory, logger)
 }
 
@@ -147,11 +147,7 @@ func (b *Builder) CreateAgent(logger *zap.Logger) (*Agent, error) {
 	if err != nil {
 		return nil, err
 	}
-	httpServer := b.HTTPServer.GetHTTPServer(b.CollectorServiceName, mainReporter.Channel(), mFactory)
-	if h := b.Metrics.Handler(); mFactory != nil && h != nil {
-		httpServer.Handler.(*http.ServeMux).Handle(b.Metrics.HTTPRoute, h)
-	}
-	return NewAgent(processors, httpServer, logger), nil
+	return NewAgent(processors, logger), nil
 }
 
 // GetProcessors creates Processors with attached Reporter
