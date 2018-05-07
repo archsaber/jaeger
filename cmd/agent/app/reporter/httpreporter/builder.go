@@ -58,7 +58,7 @@ func (b *Builder) getNewTTransport() (thrift.TTransport, error) {
 	}
 
 	// connect to the first collector for now
-	transport, err := thrift.NewTHttpPostClient("https://" + b.CollectorHostPorts[0])
+	transport, err := thrift.NewTHttpPostClient(b.CollectorHostPorts[0])
 	if err != nil {
 		return nil, err
 	}
