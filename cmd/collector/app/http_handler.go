@@ -16,7 +16,6 @@ package app
 
 import (
 	"fmt"
-	"io/ioutil"
 	"net/http"
 	"strings"
 	"time"
@@ -48,39 +47,29 @@ func NewAPIHandler(
 	}
 }
 
+func (aH *APIHandler) SubmitBatches(batches []*tJaeger.Batch) ([]*tJaeger.BatchSubmitResponse, error) {
+	ctx, cancel := tchanThrift.NewContext(time.Minute)
+	defer cancel()
+	return aH.jaegerBatchesHandler.SubmitBatches(ctx, batches)
+}
+
 // RegisterRoutes registers routes for this handler on the given router
 func (aH *APIHandler) RegisterRoutes(router *mux.Router) {
 	router.HandleFunc("/api/traces", aH.saveSpan).Methods(http.MethodPost)
 }
 
 func (aH *APIHandler) saveSpan(w http.ResponseWriter, r *http.Request) {
-	bodyBytes, err := ioutil.ReadAll(r.Body)
-	r.Body.Close()
-	if err != nil {
-		http.Error(w, fmt.Sprintf(UnableToReadBodyErrFormat, err), http.StatusInternalServerError)
-		return
-	}
-
 	format := r.FormValue(formatParam)
 	switch strings.ToLower(format) {
 	case "jaeger.thrift":
-		tdes := thrift.NewTDeserializer()
-		batchesArg := &tJaeger.CollectorSubmitBatchesArgs{}
-		if err = tdes.Read(batchesArg, bodyBytes); err != nil {
-			http.Error(w, fmt.Sprintf(UnableToReadBodyErrFormat, err), http.StatusBadRequest)
-			return
-		}
-		ctx, cancel := tchanThrift.NewContext(time.Minute)
-		defer cancel()
-		if _, err = aH.jaegerBatchesHandler.SubmitBatches(ctx, batchesArg.Batches); err != nil {
-			http.Error(w, fmt.Sprintf("Cannot submit Jaeger batch: %v", err), http.StatusInternalServerError)
-			return
-		}
+		collectorProcessor := tJaeger.NewCollectorProcessor(aH)
+		transport := thrift.NewStreamTransport(r.Body, w)
+		protFactory := thrift.NewTBinaryProtocolFactoryDefault()
+		collectorProcessor.Process(protFactory.GetProtocol(transport),
+			protFactory.GetProtocol(transport))
 
 	default:
 		http.Error(w, fmt.Sprintf("Unsupported format type: %v", format), http.StatusBadRequest)
 		return
 	}
-
-	w.WriteHeader(http.StatusAccepted)
 }
