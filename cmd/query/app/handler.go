@@ -15,10 +15,12 @@
 package app
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/url"
+	"os"
 	"strconv"
 	"time"
 
@@ -32,6 +34,7 @@ import (
 	"github.com/jaegertracing/jaeger/model/adjuster"
 	uiconv "github.com/jaegertracing/jaeger/model/converter/json"
 	ui "github.com/jaegertracing/jaeger/model/json"
+	"github.com/jaegertracing/jaeger/pkg/jwt"
 	"github.com/jaegertracing/jaeger/pkg/multierror"
 	"github.com/jaegertracing/jaeger/storage/dependencystore"
 	"github.com/jaegertracing/jaeger/storage/spanstore"
@@ -69,6 +72,10 @@ type structuredError struct {
 	Msg     string     `json:"msg"`
 	TraceID ui.TraceID `json:"traceID,omitempty"`
 }
+
+type jwtContextKey string
+
+const domainIDKey jwtContextKey = "domainid"
 
 // NewRouter creates and configures a Gorilla Router.
 func NewRouter() *mux.Router {
@@ -144,7 +151,29 @@ func (aH *APIHandler) handleFunc(
 		nethttp.OperationNameFunc(func(r *http.Request) string {
 			return route
 		}))
-	return router.HandleFunc(route, traceMiddleware.ServeHTTP)
+
+	// authorization middleware
+	authMiddleware := func(w http.ResponseWriter, r *http.Request) {
+		claims, err := jwt.CheckTokenValidity(r.Header.Get("Authorization"), os.Getenv("SECRET_KEY"))
+		if aH.handleError(w, err, http.StatusUnauthorized) {
+			return
+		}
+		domain, ok := claims["domain"]
+		if !ok {
+			aH.handleError(w, errors.New("Incomplete token"), http.StatusBadRequest)
+			return
+		}
+		domainid, ok := domain.(string)
+		if !ok {
+			aH.handleError(w, errors.New("Invalid token"), http.StatusBadRequest)
+			return
+		}
+		ctx := context.WithValue(r.Context(), domainIDKey, domainid)
+		r = r.WithContext(ctx)
+		traceMiddleware.ServeHTTP(w, r)
+	}
+
+	return router.HandleFunc(route, authMiddleware)
 }
 
 func (aH *APIHandler) route(route string, args ...interface{}) string {
@@ -216,6 +245,9 @@ func (aH *APIHandler) search(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+
+	tracesFromStorage = filterTracesToDomain(tracesFromStorage,
+		jwtContextValueFromRequest(r, domainIDKey))
 
 	uiTraces := make([]*ui.Trace, len(tracesFromStorage))
 	for i, v := range tracesFromStorage {
@@ -414,7 +446,43 @@ func (aH *APIHandler) withTraceFromReader(
 	if aH.handleError(w, err, http.StatusInternalServerError) {
 		return
 	}
+
+	traceBelongsToDomain := isTraceInDomain(trace, jwtContextValueFromRequest(r, domainIDKey))
+
+	if !traceBelongsToDomain && len(trace.Spans) > 0 {
+		aH.handleError(w, errors.New("trace does not belong to this account"),
+			http.StatusUnauthorized)
+		return
+	}
 	process(trace)
+}
+
+func filterTracesToDomain(traces []*model.Trace, domainid string) []*model.Trace {
+	var retMe []*model.Trace
+	for _, trace := range traces {
+		if isTraceInDomain(trace, domainid) {
+			retMe = append(retMe, trace)
+		}
+	}
+	return retMe
+}
+
+func isTraceInDomain(trace *model.Trace, domainid string) bool {
+	traceBelongsToDomain := false
+	for _, span := range trace.Spans {
+		for _, tag := range span.Tags {
+			if tag.Key == "domainid" {
+				if domainid == tag.VStr {
+					traceBelongsToDomain = true
+					break
+				}
+			}
+		}
+		if traceBelongsToDomain {
+			break
+		}
+	}
+	return traceBelongsToDomain
 }
 
 // archiveTrace implements the REST API POST:/archive/{trace-id}.
@@ -471,4 +539,16 @@ func (aH *APIHandler) writeJSON(w http.ResponseWriter, r *http.Request, response
 	resp, _ := marshall(response)
 	w.Header().Set("Content-Type", "application/json")
 	w.Write(resp)
+}
+
+func jwtContextValueFromRequest(r *http.Request, key jwtContextKey) string {
+	val := r.Context().Value(key)
+	if val == nil {
+		return ""
+	}
+	domainid, ok := val.(string)
+	if !ok {
+		return ""
+	}
+	return domainid
 }

@@ -25,10 +25,9 @@ import (
 
 	"github.com/apache/thrift/lib/go/thrift"
 	"github.com/gorilla/mux"
-	tchanThrift "github.com/uber/tchannel-go/thrift"
-
-	jwt "github.com/dgrijalva/jwt-go"
+	"github.com/jaegertracing/jaeger/pkg/jwt"
 	tJaeger "github.com/jaegertracing/jaeger/thrift-gen/jaeger"
+	tchanThrift "github.com/uber/tchannel-go/thrift"
 )
 
 const (
@@ -39,13 +38,14 @@ const (
 
 type apiProcessor struct {
 	jaegerBatchesHandler JaegerBatchesHandler
-	tokenClaims          map[string]interface{}
+	nodeuuid             string
+	domainid             string
 }
 
 func (aP *apiProcessor) SubmitBatches(batches []*tJaeger.Batch) ([]*tJaeger.BatchSubmitResponse, error) {
 	headers := map[string]string{
-		"nodeuuid": aP.tokenClaims["geneuuid"].(string),
-		"domainid": aP.tokenClaims["domain"].(string),
+		"nodeuuid": aP.nodeuuid,
+		"domainid": aP.domainid,
 	}
 	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(time.Minute))
 	defer cancel()
@@ -76,12 +76,17 @@ func (aH *APIHandler) saveSpan(w http.ResponseWriter, r *http.Request) {
 	format := r.FormValue(formatParam)
 	switch strings.ToLower(format) {
 	case "jaeger.thrift":
-		claims, err := checkTokenValidity(r.Header.Get("Authorization"), os.Getenv("SECRET_KEY"))
+		claims, err := jwt.CheckTokenValidity(r.Header.Get("Authorization"), os.Getenv("SECRET_KEY"))
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusUnauthorized)
 			return
 		}
-		collectorProcessor := tJaeger.NewCollectorProcessor(aH.newAPIProcessor(claims))
+		apiProcessor, err := aH.newAPIProcessor(claims)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		collectorProcessor := tJaeger.NewCollectorProcessor(apiProcessor)
 		transport := thrift.NewStreamTransport(r.Body, w)
 		protFactory := thrift.NewTBinaryProtocolFactoryDefault()
 		collectorProcessor.Process(protFactory.GetProtocol(transport),
@@ -93,39 +98,20 @@ func (aH *APIHandler) saveSpan(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (aH *APIHandler) newAPIProcessor(tokenClaims map[string]interface{}) *apiProcessor {
+func (aH *APIHandler) newAPIProcessor(tokenClaims map[string]interface{}) (*apiProcessor, error) {
+	geneuuid, ok1 := tokenClaims["geneuuid"]
+	domain, ok2 := tokenClaims["domain"]
+	if !ok1 || !ok2 {
+		return nil, errors.New("Incomplete token")
+	}
+	nodeuuid, ok1 := geneuuid.(string)
+	domainid, ok2 := domain.(string)
+	if !ok1 || !ok2 {
+		return nil, errors.New("Invalid token")
+	}
 	return &apiProcessor{
-		tokenClaims:          tokenClaims,
 		jaegerBatchesHandler: aH.jaegerBatchesHandler,
-	}
-}
-
-func checkTokenValidity(token, secret string) (map[string]interface{}, error) {
-	if len(token) < 6 || strings.ToUpper(token[0:6]) != "BEARER" {
-		return nil, errors.New("Unuthorizated access, this event will be logged and reported")
-	}
-	token = token[7:]
-	parsedToken, err := jwt.Parse(token, func(token *jwt.Token) (interface{}, error) {
-		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
-			return nil, fmt.Errorf("Unexpected signing method: %v", token.Header["alg"])
-		}
-		return []byte(secret), nil
-	})
-	if err != nil {
-		return nil, err
-	}
-	if claims, ok := parsedToken.Claims.(jwt.MapClaims); ok && parsedToken.Valid {
-		geneuuid, ok1 := claims["geneuuid"]
-		domain, ok2 := claims["domain"]
-		if !ok1 || !ok2 {
-			return nil, errors.New("Incomplete token")
-		}
-		_, ok1 = geneuuid.(string)
-		_, ok2 = domain.(string)
-		if !ok1 || !ok2 {
-			return nil, errors.New("Invalid token")
-		}
-		return claims, nil
-	}
-	return nil, errors.New("Invalid token")
+		nodeuuid:             nodeuuid,
+		domainid:             domainid,
+	}, nil
 }
