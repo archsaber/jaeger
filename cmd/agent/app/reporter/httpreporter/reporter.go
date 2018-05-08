@@ -12,6 +12,8 @@ import (
 	"go.uber.org/zap"
 )
 
+const maxPayloadLength = 1000
+
 // Reporter forwards received spans to central collector tier over HTTP.
 type Reporter struct {
 	jClient *jaeger.CollectorClient
@@ -81,24 +83,26 @@ func (r *Reporter) flushJBatchesPeriodic(ctx context.Context) {
 	defer tick.Stop()
 
 	for range tick.C {
+		finished := false
 		for {
-			sent := false
 			select {
 			case <-ctx.Done():
 				return
 			case batch := <-r.jBatches:
 				r.jPayload = append(r.jPayload, batch)
 			default:
-				if len(r.jPayload) > 0 {
-					r.rw.RLock()
-					r.jClient.SubmitBatches(r.jPayload)
-					r.rw.RUnlock()
+				finished = true
+			}
+			if finished || len(r.jPayload) >= maxPayloadLength {
+				if len(r.jPayload) == 0 {
+					break
 				}
+				r.rw.RLock()
+				r.jClient.SubmitBatches(r.jPayload)
+				r.rw.RUnlock()
+
 				// reset payload buffer
 				r.jPayload = r.jPayload[:0]
-				sent = true
-			}
-			if sent {
 				break
 			}
 		}
@@ -110,25 +114,26 @@ func (r *Reporter) flushZBatchesPeriodic(ctx context.Context) {
 	defer tick.Stop()
 
 	for range tick.C {
+		finished := false
 		for {
-			sent := false
 			select {
 			case <-ctx.Done():
 				return
 			case batch := <-r.zBatches:
 				r.zPayload = append(r.zPayload, batch...)
 			default:
-				if len(r.zPayload) > 0 {
-					r.rw.RLock()
-					r.zClient.SubmitZipkinBatch(r.zPayload)
-					r.rw.RUnlock()
+				finished = true
+			}
+			if finished || len(r.zPayload) >= maxPayloadLength {
+				if len(r.zPayload) == 0 {
+					break
 				}
+				r.rw.RLock()
+				r.zClient.SubmitZipkinBatch(r.zPayload)
+				r.rw.RUnlock()
+
 				// reset payload buffer
 				r.zPayload = r.zPayload[:0]
-				sent = true
-			}
-			if sent {
-				break
 			}
 		}
 	}
