@@ -69,6 +69,7 @@ func NewJaegerSpanHandler(logger *zap.Logger, modelProcessor SpanProcessor) Jaeg
 func (jbh *jaegerBatchesHandler) SubmitBatches(ctx thrift.Context, batches []*jaeger.Batch) ([]*jaeger.BatchSubmitResponse, error) {
 	headers := ctx.Headers()
 	nodeUUID := headers["nodeuuid"]
+	domainID := headers["domainid"]
 	responses := make([]*jaeger.BatchSubmitResponse, 0, len(batches))
 	for _, batch := range batches {
 		mSpans := make([]*model.Span, 0, len(batch.Spans))
@@ -77,6 +78,10 @@ func (jbh *jaegerBatchesHandler) SubmitBatches(ctx thrift.Context, batches []*ja
 				Key:   "nodeuuid",
 				VType: jaeger.TagType_STRING,
 				VStr:  &nodeUUID,
+			}, &jaeger.Tag{
+				Key:   "domainid",
+				VType: jaeger.TagType_STRING,
+				VStr:  &domainID,
 			})
 			mSpan := jConv.ToDomainSpan(span, batch.Process)
 			mSpans = append(mSpans, mSpan)

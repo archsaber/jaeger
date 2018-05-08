@@ -45,6 +45,7 @@ type apiProcessor struct {
 func (aP *apiProcessor) SubmitBatches(batches []*tJaeger.Batch) ([]*tJaeger.BatchSubmitResponse, error) {
 	headers := map[string]string{
 		"nodeuuid": aP.tokenClaims["geneuuid"].(string),
+		"domainid": aP.tokenClaims["domain"].(string),
 	}
 	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(time.Minute))
 	defer cancel()
@@ -77,7 +78,7 @@ func (aH *APIHandler) saveSpan(w http.ResponseWriter, r *http.Request) {
 	case "jaeger.thrift":
 		claims, err := checkTokenValidity(r.Header.Get("Authorization"), os.Getenv("SECRET_KEY"))
 		if err != nil {
-			http.Error(w, "Could not validate Authorization header", http.StatusUnauthorized)
+			http.Error(w, err.Error(), http.StatusUnauthorized)
 			return
 		}
 		collectorProcessor := tJaeger.NewCollectorProcessor(aH.newAPIProcessor(claims))
@@ -114,9 +115,15 @@ func checkTokenValidity(token, secret string) (map[string]interface{}, error) {
 		return nil, err
 	}
 	if claims, ok := parsedToken.Claims.(jwt.MapClaims); ok && parsedToken.Valid {
-		_, ok := claims["geneuuid"].(string)
-		if !ok {
+		geneuuid, ok1 := claims["geneuuid"]
+		domain, ok2 := claims["domain"]
+		if !ok1 || !ok2 {
 			return nil, errors.New("Incomplete token")
+		}
+		_, ok1 = geneuuid.(string)
+		_, ok2 = domain.(string)
+		if !ok1 || !ok2 {
+			return nil, errors.New("Invalid token")
 		}
 		return claims, nil
 	}
