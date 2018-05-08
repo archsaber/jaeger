@@ -2,7 +2,9 @@ package httpreporter
 
 import (
 	"context"
+	"errors"
 	"sync"
+	"time"
 
 	"github.com/fsnotify/fsnotify"
 	"github.com/jaegertracing/jaeger/thrift-gen/jaeger"
@@ -18,6 +20,14 @@ type Reporter struct {
 
 	// builder for this reporter
 	builder *Builder
+
+	jBatches chan *jaeger.Batch
+	// payload buffer for jaeger batches
+	jPayload []*jaeger.Batch
+
+	zBatches chan []*zipkincore.Span
+	// payload buffer for zipkin spans
+	zPayload []*zipkincore.Span
 
 	// sync mechanism for jClient and zClient access
 	rw sync.RWMutex
@@ -40,6 +50,8 @@ func (r *Reporter) watchTokenUpdates(ctx context.Context) {
 
 	for {
 		select {
+		case <-ctx.Done():
+			return
 		case event := <-watcher.Events:
 			if event.Op&fsnotify.Write == fsnotify.Write ||
 				event.Op&fsnotify.Create == fsnotify.Create {
@@ -47,8 +59,6 @@ func (r *Reporter) watchTokenUpdates(ctx context.Context) {
 			}
 		case err := <-watcher.Errors:
 			r.logger.Error(err.Error())
-		case <-ctx.Done():
-			return
 		}
 	}
 }
@@ -66,18 +76,80 @@ func (r *Reporter) updateClients() {
 	r.rw.Unlock()
 }
 
+func (r *Reporter) flushJBatchesPeriodic(ctx context.Context) {
+	tick := time.NewTicker(4 * time.Second)
+	defer tick.Stop()
+
+	for range tick.C {
+		for {
+			sent := false
+			select {
+			case <-ctx.Done():
+				return
+			case batch := <-r.jBatches:
+				r.jPayload = append(r.jPayload, batch)
+			default:
+				if len(r.jPayload) > 0 {
+					r.rw.RLock()
+					r.jClient.SubmitBatches(r.jPayload)
+					r.rw.RUnlock()
+				}
+				// reset payload buffer
+				r.jPayload = r.jPayload[:0]
+				sent = true
+			}
+			if sent {
+				break
+			}
+		}
+	}
+}
+
+func (r *Reporter) flushZBatchesPeriodic(ctx context.Context) {
+	tick := time.NewTicker(4 * time.Second)
+	defer tick.Stop()
+
+	for range tick.C {
+		for {
+			sent := false
+			select {
+			case <-ctx.Done():
+				return
+			case batch := <-r.zBatches:
+				r.zPayload = append(r.zPayload, batch...)
+			default:
+				if len(r.zPayload) > 0 {
+					r.rw.RLock()
+					r.zClient.SubmitZipkinBatch(r.zPayload)
+					r.rw.RUnlock()
+				}
+				// reset payload buffer
+				r.zPayload = r.zPayload[:0]
+				sent = true
+			}
+			if sent {
+				break
+			}
+		}
+	}
+}
+
 // EmitZipkinBatch implements EmitZipkinBatch() of Reporter
 func (r *Reporter) EmitZipkinBatch(spans []*zipkincore.Span) error {
-	r.rw.RLock()
-	_, err := r.zClient.SubmitZipkinBatch(spans)
-	r.rw.RUnlock()
-	return err
+	select {
+	case r.zBatches <- spans:
+		return nil
+	default:
+		return errors.New("Zipkin spans dropped due to congestion")
+	}
 }
 
 // EmitBatch implements EmitBatch() of Reporter
 func (r *Reporter) EmitBatch(batch *jaeger.Batch) error {
-	r.rw.RLock()
-	_, err := r.jClient.SubmitBatches([]*jaeger.Batch{batch})
-	r.rw.RUnlock()
-	return err
+	select {
+	case r.jBatches <- batch:
+		return nil
+	default:
+		return errors.New("Jaeger batch dropped due to congestion")
+	}
 }

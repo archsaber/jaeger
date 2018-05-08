@@ -34,12 +34,16 @@ func (b *Builder) CreateReporter(mFactory metrics.Factory, logger *zap.Logger) (
 	}
 	protFactory := b.getNewTProtocolFactory()
 	r := &Reporter{
-		jClient: jaeger.NewCollectorClientFactory(trans, protFactory),
-		zClient: zipkincore.NewZipkinCollectorClientFactory(trans, protFactory),
-		logger:  logger,
-		builder: b,
+		jClient:  jaeger.NewCollectorClientFactory(trans, protFactory),
+		zClient:  zipkincore.NewZipkinCollectorClientFactory(trans, protFactory),
+		logger:   logger,
+		builder:  b,
+		jBatches: make(chan *jaeger.Batch, 1000),
+		jPayload: make([]*jaeger.Batch, 0, 1000),
 	}
 	go r.watchTokenUpdates(context.Background())
+	go r.flushJBatchesPeriodic(context.Background())
+	go r.flushZBatchesPeriodic(context.Background())
 	return r, nil
 }
 
