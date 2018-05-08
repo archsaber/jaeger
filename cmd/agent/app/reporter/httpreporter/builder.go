@@ -1,9 +1,10 @@
 package httpreporter
 
 import (
+	"bufio"
 	"context"
 	"errors"
-	"io/ioutil"
+	"os"
 
 	"github.com/apache/thrift/lib/go/thrift"
 	"github.com/jaegertracing/jaeger/thrift-gen/jaeger"
@@ -68,16 +69,22 @@ func (b *Builder) getNewTTransport() (thrift.TTransport, error) {
 	}
 	httpTransport, _ := (transport).(*thrift.THttpClient)
 	if token != "" {
-		httpTransport.SetHeader("Authorization", token)
+		httpTransport.SetHeader("Authorization", "BEARER "+token)
 	}
 	b.transport = httpTransport
 	return httpTransport, nil
 }
 
 func readTokenFromFile(tokenFile string) string {
-	tokenBytes, err := ioutil.ReadFile(tokenFile)
+	file, err := os.Open(tokenFile)
 	if err != nil {
 		return ""
 	}
-	return string(tokenBytes)
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+	if scanner.Scan() {
+		return scanner.Text()
+	}
+	return ""
 }

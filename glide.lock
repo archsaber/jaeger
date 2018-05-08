@@ -1,5 +1,5 @@
-hash: 55a22920ef3e5d5f7b16bafaf61b1d4c0264d53d800ab3d7429b033cf1a7bf6b
-updated: 2018-05-05T12:15:10.721622094+05:30
+hash: 3ec3a98a84c42b7e8d38061e1dc5c43888176fc282307ec91776a4017e0c0936
+updated: 2018-05-08T18:15:32.22305738+05:30
 imports:
 - name: github.com/apache/thrift
   version: 53dd39833a08ce33582e5ff31fa18bb4735d6731
@@ -22,6 +22,8 @@ imports:
   version: 8991bc29aa16c548c550c7ff78260e27b9ab7c73
   subpackages:
   - spew
+- name: github.com/dgrijalva/jwt-go
+  version: 06ea1031745cb8b3dab3f6a236daf2b0aa468b7e
 - name: github.com/elazarl/go-bindata-assetfs
   version: 38087fe4dafb822e541b3f7955075cc1c30bd294
 - name: github.com/fsnotify/fsnotify
@@ -197,6 +199,7 @@ imports:
   - internal/baggage/remote
   - internal/spanlog
   - internal/throttler
+  - internal/throttler/remote
   - log
   - rpcmetrics
   - thrift
@@ -248,7 +251,7 @@ imports:
   - zapcore
   - zaptest
 - name: golang.org/x/net
-  version: 5f9ae10d9af5b1c89ae6904293b14b064d4ada23
+  version: d11bb6cd8e3c4e60239c9cb20ef68586d74500d0
   subpackages:
   - context
   - context/ctxhttp
