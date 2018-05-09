@@ -17,6 +17,7 @@ package spanstore
 import (
 	"time"
 
+	"github.com/gocql/gocql"
 	"github.com/pkg/errors"
 	"github.com/uber/jaeger-lib/metrics"
 	"go.uber.org/zap"
@@ -33,29 +34,29 @@ const (
 	querySpanByTraceID = `
 		SELECT trace_id, span_id, parent_id, operation_name, flags, start_time, duration, tags, logs, refs, process
 		FROM traces
-		WHERE trace_id = ?`
+		WHERE trace_id = ? AND domain_id = ?`
 	queryByTag = `
 		SELECT trace_id
 		FROM tag_index
-		WHERE service_name = ? AND tag_key = ? AND tag_value = ? and start_time > ? and start_time < ?
+		WHERE service_name = ? AND tag_key = ? AND tag_value = ? AND start_time > ? AND start_time < ? AND domain_id = ?
 		ORDER BY start_time DESC
 		LIMIT ?`
 	queryByServiceName = `
 		SELECT trace_id
 		FROM service_name_index
-		WHERE bucket IN ` + bucketRange + ` AND service_name = ? AND start_time > ? AND start_time < ?
+		WHERE bucket IN ` + bucketRange + ` AND service_name = ? AND start_time > ? AND start_time < ? AND domain_id = ?
 		ORDER BY start_time DESC
 		LIMIT ?`
 	queryByServiceAndOperationName = `
 		SELECT trace_id
 		FROM service_operation_index
-		WHERE service_name = ? AND operation_name = ? AND start_time > ? AND start_time < ?
+		WHERE service_name = ? AND operation_name = ? AND start_time > ? AND start_time < ? AND domain_id = ?
 		ORDER BY start_time DESC
 		LIMIT ?`
 	queryByDuration = `
 		SELECT trace_id
 		FROM duration_index
-		WHERE bucket = ? AND service_name = ? AND operation_name = ? AND duration > ? AND duration < ?
+		WHERE bucket = ? AND service_name = ? AND operation_name = ? AND duration > ? AND duration < ? AND domain_id = ?
 		LIMIT ?`
 
 	defaultNumTraces = 100
@@ -84,9 +85,9 @@ var (
 	ErrStartAndEndTimeNotSet = errors.New("Start and End Time must be set")
 )
 
-type serviceNamesReader func() ([]string, error)
+type serviceNamesReader func(domainID gocql.UUID) ([]string, error)
 
-type operationNamesReader func(service string) ([]string, error)
+type operationNamesReader func(service string, domainID gocql.UUID) ([]string, error)
 
 type spanReaderMetrics struct {
 	readTraces                 *casMetrics.Table
@@ -134,19 +135,19 @@ func NewSpanReader(
 }
 
 // GetServices returns all services traced by Jaeger
-func (s *SpanReader) GetServices() ([]string, error) {
-	return s.serviceNamesReader()
+func (s *SpanReader) GetServices(domainID gocql.UUID) ([]string, error) {
+	return s.serviceNamesReader(domainID)
 
 }
 
 // GetOperations returns all operations for a specific service traced by Jaeger
-func (s *SpanReader) GetOperations(service string) ([]string, error) {
-	return s.operationNamesReader(service)
+func (s *SpanReader) GetOperations(service string, domainID gocql.UUID) ([]string, error) {
+	return s.operationNamesReader(service, domainID)
 }
 
-func (s *SpanReader) readTrace(traceID dbmodel.TraceID) (*model.Trace, error) {
+func (s *SpanReader) readTrace(traceID dbmodel.TraceID, domainID gocql.UUID) (*model.Trace, error) {
 	start := time.Now()
-	q := s.session.Query(querySpanByTraceID, traceID)
+	q := s.session.Query(querySpanByTraceID, traceID, domainID)
 	i := q.Consistency(s.consistency).Iter()
 	var traceIDFromSpan dbmodel.TraceID
 	var startTime, spanID, duration, parentID int64
@@ -193,8 +194,8 @@ func (s *SpanReader) readTrace(traceID dbmodel.TraceID) (*model.Trace, error) {
 }
 
 // GetTrace takes a traceID and returns a Trace associated with that traceID
-func (s *SpanReader) GetTrace(traceID model.TraceID) (*model.Trace, error) {
-	return s.readTrace(dbmodel.TraceIDFromDomain(traceID))
+func (s *SpanReader) GetTrace(traceID model.TraceID, domainID gocql.UUID) (*model.Trace, error) {
+	return s.readTrace(dbmodel.TraceIDFromDomain(traceID), domainID)
 }
 
 func validateQuery(p *spanstore.TraceQueryParameters) error {
@@ -236,7 +237,7 @@ func (s *SpanReader) FindTraces(traceQuery *spanstore.TraceQueryParameters) ([]*
 		if len(retMe) >= traceQuery.NumTraces {
 			break
 		}
-		jTrace, err := s.readTrace(traceID)
+		jTrace, err := s.readTrace(traceID, traceQuery.DomainID)
 		if err != nil {
 			s.logger.Error("Failure to read trace", zap.String("trace_id", traceID.String()), zap.Error(err))
 			continue
@@ -285,6 +286,7 @@ func (s *SpanReader) queryByTagsAndLogs(tq *spanstore.TraceQueryParameters) (dbm
 			model.TimeAsEpochMicroseconds(tq.StartTimeMin),
 			model.TimeAsEpochMicroseconds(tq.StartTimeMax),
 			tq.NumTraces*limitMultiple,
+			tq.DomainID,
 		).PageSize(0)
 		t, err := s.executeQuery(query, s.metrics.queryTagIndex)
 		if err != nil {
@@ -317,7 +319,8 @@ func (s *SpanReader) queryByDuration(traceQuery *spanstore.TraceQueryParameters)
 			traceQuery.OperationName,
 			minDurationMicros,
 			maxDurationMicros,
-			traceQuery.NumTraces*limitMultiple)
+			traceQuery.NumTraces*limitMultiple,
+			traceQuery.DomainID)
 		t, err := s.executeQuery(query, s.metrics.queryDurationIndex)
 		if err != nil {
 			return nil, err
@@ -341,6 +344,7 @@ func (s *SpanReader) queryByServiceNameAndOperation(tq *spanstore.TraceQueryPara
 		model.TimeAsEpochMicroseconds(tq.StartTimeMin),
 		model.TimeAsEpochMicroseconds(tq.StartTimeMax),
 		tq.NumTraces*limitMultiple,
+		tq.DomainID,
 	).PageSize(0)
 	return s.executeQuery(query, s.metrics.queryServiceOperationIndex)
 }
@@ -352,6 +356,7 @@ func (s *SpanReader) queryByService(tq *spanstore.TraceQueryParameters) (dbmodel
 		model.TimeAsEpochMicroseconds(tq.StartTimeMin),
 		model.TimeAsEpochMicroseconds(tq.StartTimeMax),
 		tq.NumTraces*limitMultiple,
+		tq.DomainID,
 	).PageSize(0)
 	return s.executeQuery(query, s.metrics.queryServiceNameIndex)
 }

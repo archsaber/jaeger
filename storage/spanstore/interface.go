@@ -18,6 +18,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/gocql/gocql"
 	"github.com/jaegertracing/jaeger/model"
 )
 
@@ -33,14 +34,15 @@ var (
 
 // Reader finds and loads traces and other data from storage.
 type Reader interface {
-	GetTrace(traceID model.TraceID) (*model.Trace, error)
-	GetServices() ([]string, error)
-	GetOperations(service string) ([]string, error)
+	GetTrace(traceID model.TraceID, domainID gocql.UUID) (*model.Trace, error)
+	GetServices(domainID gocql.UUID) ([]string, error)
+	GetOperations(service string, domainID gocql.UUID) ([]string, error)
 	FindTraces(query *TraceQueryParameters) ([]*model.Trace, error)
 }
 
 // TraceQueryParameters contains parameters of a trace query.
 type TraceQueryParameters struct {
+	DomainID      gocql.UUID
 	ServiceName   string
 	OperationName string
 	Tags          map[string]string

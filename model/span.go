@@ -21,6 +21,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/gocql/gocql"
 	"github.com/opentracing/opentracing-go/ext"
 )
 
@@ -57,6 +58,7 @@ type Span struct {
 	Logs          []Log         `json:"logs,omitempty"`
 	Process       *Process      `json:"process"`
 	Warnings      []string      `json:"warnings,omitempty"`
+	DomainID      gocql.UUID
 }
 
 // Hash implements Hash from Hashable.

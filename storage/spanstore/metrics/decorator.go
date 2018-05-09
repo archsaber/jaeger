@@ -17,6 +17,7 @@ package metrics
 import (
 	"time"
 
+	"github.com/gocql/gocql"
 	"github.com/uber/jaeger-lib/metrics"
 
 	"github.com/jaegertracing/jaeger/model"
@@ -80,25 +81,25 @@ func (m *ReadMetricsDecorator) FindTraces(traceQuery *spanstore.TraceQueryParame
 }
 
 // GetTrace implements spanstore.Reader#GetTrace
-func (m *ReadMetricsDecorator) GetTrace(traceID model.TraceID) (*model.Trace, error) {
+func (m *ReadMetricsDecorator) GetTrace(traceID model.TraceID, domainID gocql.UUID) (*model.Trace, error) {
 	start := time.Now()
-	retMe, err := m.spanReader.GetTrace(traceID)
+	retMe, err := m.spanReader.GetTrace(traceID, domainID)
 	m.getTraceMetrics.emit(err, time.Since(start), 1)
 	return retMe, err
 }
 
 // GetServices implements spanstore.Reader#GetServices
-func (m *ReadMetricsDecorator) GetServices() ([]string, error) {
+func (m *ReadMetricsDecorator) GetServices(domainID gocql.UUID) ([]string, error) {
 	start := time.Now()
-	retMe, err := m.spanReader.GetServices()
+	retMe, err := m.spanReader.GetServices(domainID)
 	m.getServicesMetrics.emit(err, time.Since(start), len(retMe))
 	return retMe, err
 }
 
 // GetOperations implements spanstore.Reader#GetOperations
-func (m *ReadMetricsDecorator) GetOperations(service string) ([]string, error) {
+func (m *ReadMetricsDecorator) GetOperations(service string, domainID gocql.UUID) ([]string, error) {
 	start := time.Now()
-	retMe, err := m.spanReader.GetOperations(service)
+	retMe, err := m.spanReader.GetOperations(service, domainID)
 	m.getOperationsMetrics.emit(err, time.Since(start), len(retMe))
 	return retMe, err
 }

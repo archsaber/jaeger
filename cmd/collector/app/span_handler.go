@@ -15,6 +15,7 @@
 package app
 
 import (
+	"github.com/gocql/gocql"
 	"github.com/uber/tchannel-go/thrift"
 	"go.uber.org/zap"
 
@@ -68,8 +69,12 @@ func NewJaegerSpanHandler(logger *zap.Logger, modelProcessor SpanProcessor) Jaeg
 
 func (jbh *jaegerBatchesHandler) SubmitBatches(ctx thrift.Context, batches []*jaeger.Batch) ([]*jaeger.BatchSubmitResponse, error) {
 	headers := ctx.Headers()
-	nodeUUID := headers["nodeuuid"]
-	domainID := headers["domainid"]
+	nodeuuid := headers["nodeuuid"]
+	domainid := headers["domainid"]
+	domainID, err := gocql.ParseUUID(domainid)
+	if err != nil {
+		return nil, err
+	}
 	responses := make([]*jaeger.BatchSubmitResponse, 0, len(batches))
 	for _, batch := range batches {
 		mSpans := make([]*model.Span, 0, len(batch.Spans))
@@ -77,13 +82,10 @@ func (jbh *jaegerBatchesHandler) SubmitBatches(ctx thrift.Context, batches []*ja
 			span.Tags = append(span.Tags, &jaeger.Tag{
 				Key:   "nodeuuid",
 				VType: jaeger.TagType_STRING,
-				VStr:  &nodeUUID,
-			}, &jaeger.Tag{
-				Key:   "domainid",
-				VType: jaeger.TagType_STRING,
-				VStr:  &domainID,
+				VStr:  &nodeuuid,
 			})
 			mSpan := jConv.ToDomainSpan(span, batch.Process)
+			mSpan.DomainID = domainID
 			mSpans = append(mSpans, mSpan)
 		}
 		oks, err := jbh.modelProcessor.ProcessSpans(mSpans, JaegerFormatType)

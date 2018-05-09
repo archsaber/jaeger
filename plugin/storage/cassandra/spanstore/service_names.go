@@ -17,6 +17,7 @@ package spanstore
 import (
 	"time"
 
+	"github.com/gocql/gocql"
 	"github.com/pkg/errors"
 	"github.com/uber/jaeger-lib/metrics"
 	"go.uber.org/zap"
@@ -27,8 +28,8 @@ import (
 )
 
 const (
-	insertServiceName = `INSERT INTO service_names(service_name) VALUES (?)`
-	queryServiceNames = `SELECT service_name FROM service_names`
+	insertServiceName = `INSERT INTO service_names(service_name, domain_id) VALUES (?, ?)`
+	queryServiceNames = `SELECT service_name FROM service_names WHERE domain_id = ?`
 )
 
 // ServiceNamesStorage stores known service names.
@@ -66,11 +67,11 @@ func NewServiceNamesStorage(
 }
 
 // Write saves a single service name
-func (s *ServiceNamesStorage) Write(serviceName string) error {
+func (s *ServiceNamesStorage) Write(serviceName string, domainID gocql.UUID) error {
 	var err error
 	query := s.session.Query(s.InsertStmt)
-	if inCache := checkWriteCache(serviceName, s.serviceNames, s.writeCacheTTL); !inCache {
-		q := query.Bind(serviceName)
+	if inCache := checkWriteCache(domainID.String()+"|"+serviceName, s.serviceNames, s.writeCacheTTL); !inCache {
+		q := query.Bind(serviceName, domainID)
 		err2 := s.metrics.Exec(q, s.logger)
 		if err2 != nil {
 			err = err2
@@ -94,8 +95,8 @@ func checkWriteCache(key string, c cache.Cache, writeCacheTTL time.Duration) boo
 }
 
 // GetServices returns all services traced by Jaeger
-func (s *ServiceNamesStorage) GetServices() ([]string, error) {
-	iter := s.session.Query(s.QueryStmt).Iter()
+func (s *ServiceNamesStorage) GetServices(domainID gocql.UUID) ([]string, error) {
+	iter := s.session.Query(s.QueryStmt, domainID).Iter()
 
 	var service string
 	var services []string

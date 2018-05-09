@@ -30,6 +30,7 @@ import (
 	"github.com/pkg/errors"
 	"go.uber.org/zap"
 
+	"github.com/gocql/gocql"
 	"github.com/jaegertracing/jaeger/model"
 	"github.com/jaegertracing/jaeger/model/adjuster"
 	uiconv "github.com/jaegertracing/jaeger/model/converter/json"
@@ -164,11 +165,16 @@ func (aH *APIHandler) handleFunc(
 			return
 		}
 		domainid, ok := domain.(string)
-		if !ok {
+		if !ok || domainid == "" {
 			aH.handleError(w, errors.New("Invalid token"), http.StatusBadRequest)
 			return
 		}
-		ctx := context.WithValue(r.Context(), domainIDKey, domainid)
+		uuid, err := gocql.ParseUUID(domainid)
+		if err != nil {
+			aH.handleError(w, errors.New("Invalid token"), http.StatusBadRequest)
+			return
+		}
+		ctx := context.WithValue(r.Context(), domainIDKey, uuid)
 		r = r.WithContext(ctx)
 		traceMiddleware.ServeHTTP(w, r)
 	}
@@ -182,7 +188,7 @@ func (aH *APIHandler) route(route string, args ...interface{}) string {
 }
 
 func (aH *APIHandler) getServices(w http.ResponseWriter, r *http.Request) {
-	services, err := aH.spanReader.GetServices()
+	services, err := aH.spanReader.GetServices(domainIDFromRequest(r))
 	if aH.handleError(w, err, http.StatusInternalServerError) {
 		return
 	}
@@ -197,7 +203,7 @@ func (aH *APIHandler) getOperationsLegacy(w http.ResponseWriter, r *http.Request
 	vars := mux.Vars(r)
 	// given how getOperationsLegacy is bound to URL route, serviceParam cannot be empty
 	service, _ := url.QueryUnescape(vars[serviceParam])
-	operations, err := aH.spanReader.GetOperations(service)
+	operations, err := aH.spanReader.GetOperations(service, domainIDFromRequest(r))
 	if aH.handleError(w, err, http.StatusInternalServerError) {
 		return
 	}
@@ -215,7 +221,7 @@ func (aH *APIHandler) getOperations(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	operations, err := aH.spanReader.GetOperations(service)
+	operations, err := aH.spanReader.GetOperations(service, domainIDFromRequest(r))
 	if aH.handleError(w, err, http.StatusInternalServerError) {
 		return
 	}
@@ -235,7 +241,7 @@ func (aH *APIHandler) search(w http.ResponseWriter, r *http.Request) {
 	var uiErrors []structuredError
 	var tracesFromStorage []*model.Trace
 	if len(tQuery.traceIDs) > 0 {
-		tracesFromStorage, uiErrors, err = aH.tracesByIDs(tQuery.traceIDs)
+		tracesFromStorage, uiErrors, err = aH.tracesByIDs(tQuery.traceIDs, domainIDFromRequest(r))
 		if aH.handleError(w, err, http.StatusInternalServerError) {
 			return
 		}
@@ -245,9 +251,6 @@ func (aH *APIHandler) search(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-
-	tracesFromStorage = filterTracesToDomain(tracesFromStorage,
-		jwtContextValueFromRequest(r, domainIDKey))
 
 	uiTraces := make([]*ui.Trace, len(tracesFromStorage))
 	for i, v := range tracesFromStorage {
@@ -265,11 +268,11 @@ func (aH *APIHandler) search(w http.ResponseWriter, r *http.Request) {
 	aH.writeJSON(w, r, &structuredRes)
 }
 
-func (aH *APIHandler) tracesByIDs(traceIDs []model.TraceID) ([]*model.Trace, []structuredError, error) {
+func (aH *APIHandler) tracesByIDs(traceIDs []model.TraceID, domainID gocql.UUID) ([]*model.Trace, []structuredError, error) {
 	var errors []structuredError
 	retMe := make([]*model.Trace, 0, len(traceIDs))
 	for _, traceID := range traceIDs {
-		if trace, err := aH.spanReader.GetTrace(traceID); err != nil {
+		if trace, err := aH.spanReader.GetTrace(traceID, domainID); err != nil {
 			if err != spanstore.ErrTraceNotFound {
 				return nil, nil, err
 			}
@@ -431,13 +434,13 @@ func (aH *APIHandler) withTraceFromReader(
 	if !ok {
 		return
 	}
-	trace, err := reader.GetTrace(traceID)
+	trace, err := reader.GetTrace(traceID, domainIDFromRequest(r))
 	if err == spanstore.ErrTraceNotFound {
 		if backupReader == nil {
 			aH.handleError(w, err, http.StatusNotFound)
 			return
 		}
-		trace, err = backupReader.GetTrace(traceID)
+		trace, err = backupReader.GetTrace(traceID, domainIDFromRequest(r))
 		if err == spanstore.ErrTraceNotFound {
 			aH.handleError(w, err, http.StatusNotFound)
 			return
@@ -447,42 +450,7 @@ func (aH *APIHandler) withTraceFromReader(
 		return
 	}
 
-	traceBelongsToDomain := isTraceInDomain(trace, jwtContextValueFromRequest(r, domainIDKey))
-
-	if !traceBelongsToDomain && len(trace.Spans) > 0 {
-		aH.handleError(w, errors.New("trace does not belong to this account"),
-			http.StatusUnauthorized)
-		return
-	}
 	process(trace)
-}
-
-func filterTracesToDomain(traces []*model.Trace, domainid string) []*model.Trace {
-	var retMe []*model.Trace
-	for _, trace := range traces {
-		if isTraceInDomain(trace, domainid) {
-			retMe = append(retMe, trace)
-		}
-	}
-	return retMe
-}
-
-func isTraceInDomain(trace *model.Trace, domainid string) bool {
-	traceBelongsToDomain := false
-	for _, span := range trace.Spans {
-		for _, tag := range span.Tags {
-			if tag.Key == "domainid" {
-				if domainid == tag.VStr {
-					traceBelongsToDomain = true
-					break
-				}
-			}
-		}
-		if traceBelongsToDomain {
-			break
-		}
-	}
-	return traceBelongsToDomain
 }
 
 // archiveTrace implements the REST API POST:/archive/{trace-id}.
@@ -541,14 +509,15 @@ func (aH *APIHandler) writeJSON(w http.ResponseWriter, r *http.Request, response
 	w.Write(resp)
 }
 
-func jwtContextValueFromRequest(r *http.Request, key jwtContextKey) string {
-	val := r.Context().Value(key)
+func domainIDFromRequest(r *http.Request) gocql.UUID {
+	var defaultID gocql.UUID
+	val := r.Context().Value(domainIDKey)
 	if val == nil {
-		return ""
+		return defaultID
 	}
-	domainid, ok := val.(string)
+	domainID, ok := val.(gocql.UUID)
 	if !ok {
-		return ""
+		return defaultID
 	}
-	return domainid
+	return domainID
 }

@@ -20,6 +20,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/gocql/gocql"
 	"github.com/pkg/errors"
 	"github.com/uber/jaeger-lib/metrics"
 	"go.uber.org/zap"
@@ -34,8 +35,8 @@ const (
 	insertSpan = `
 		INSERT
 		INTO traces(trace_id, span_id, span_hash, parent_id, operation_name, flags,
-				    start_time, duration, tags, logs, refs, process)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+				    start_time, duration, tags, logs, refs, process, domain_id)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 	insertTag = `
 		INSERT
 		INTO tag_index(trace_id, span_id, service_name, start_time, tag_key, tag_value)
@@ -43,19 +44,19 @@ const (
 
 	serviceNameIndex = `
 		INSERT
-		INTO service_name_index(service_name, bucket, start_time, trace_id)
-		VALUES (?, ?, ?, ?)`
+		INTO service_name_index(service_name, bucket, start_time, trace_id, domain_id)
+		VALUES (?, ?, ?, ?, ?)`
 
 	serviceOperationIndex = `
 		INSERT
 		INTO
-		service_operation_index(service_name, operation_name, start_time, trace_id)
-		VALUES (?, ?, ?, ?)`
+		service_operation_index(service_name, operation_name, start_time, trace_id, domain_id)
+		VALUES (?, ?, ?, ?, ?)`
 
 	durationIndex = `
 		INSERT
-		INTO duration_index(service_name, operation_name, bucket, duration, start_time, trace_id)
-		VALUES (?, ?, ?, ?, ?, ?)`
+		INTO duration_index(service_name, operation_name, bucket, duration, start_time, trace_id, domain_id)
+		VALUES (?, ?, ?, ?, ?, ?, ?)`
 
 	maximumTagKeyOrValueSize = 256
 
@@ -71,8 +72,8 @@ const (
 )
 
 type storageMode uint8
-type serviceNamesWriter func(serviceName string) error
-type operationNamesWriter func(serviceName, operationName string) error
+type serviceNamesWriter func(serviceName string, domainID gocql.UUID) error
+type operationNamesWriter func(serviceName, operationName string, domainID gocql.UUID) error
 
 type spanWriterMetrics struct {
 	traces                *casMetrics.Table
@@ -161,6 +162,7 @@ func (s *SpanWriter) writeSpan(span *model.Span, ds *dbmodel.Span) error {
 		ds.Logs,
 		ds.Refs,
 		ds.Process,
+		span.DomainID,
 	)
 	if err := s.writerMetrics.traces.Exec(mainQuery, s.logger); err != nil {
 		return s.logError(ds, err, "Failed to insert span", s.logger)
@@ -169,7 +171,7 @@ func (s *SpanWriter) writeSpan(span *model.Span, ds *dbmodel.Span) error {
 }
 
 func (s *SpanWriter) writeIndexes(span *model.Span, ds *dbmodel.Span) error {
-	if err := s.saveServiceNameAndOperationName(ds.ServiceName, ds.OperationName); err != nil {
+	if err := s.saveServiceNameAndOperationName(ds.ServiceName, ds.OperationName, span.DomainID); err != nil {
 		// should this be a soft failure?
 		return s.logError(ds, err, "Failed to insert service name and operation name", s.logger)
 	}
@@ -178,15 +180,15 @@ func (s *SpanWriter) writeIndexes(span *model.Span, ds *dbmodel.Span) error {
 		return s.logError(ds, err, "Failed to index tags", s.logger)
 	}
 
-	if err := s.indexByService(span.TraceID, ds); err != nil {
+	if err := s.indexByService(span.TraceID, ds, span.DomainID); err != nil {
 		return s.logError(ds, err, "Failed to index service name", s.logger)
 	}
 
-	if err := s.indexByOperation(span.TraceID, ds); err != nil {
+	if err := s.indexByOperation(span.TraceID, ds, span.DomainID); err != nil {
 		return s.logError(ds, err, "Failed to index operation name", s.logger)
 	}
 
-	if err := s.indexByDuration(ds, span.StartTime); err != nil {
+	if err := s.indexByDuration(ds, span.StartTime, span.DomainID); err != nil {
 		return s.logError(ds, err, "Failed to index duration", s.logger)
 	}
 	return nil
@@ -212,12 +214,12 @@ func (s *SpanWriter) indexByTags(span *model.Span, ds *dbmodel.Span) error {
 	return nil
 }
 
-func (s *SpanWriter) indexByDuration(span *dbmodel.Span, startTime time.Time) error {
+func (s *SpanWriter) indexByDuration(span *dbmodel.Span, startTime time.Time, domainID gocql.UUID) error {
 	query := s.session.Query(durationIndex)
 	timeBucket := startTime.Round(durationBucketSize)
 	var err error
 	indexByOperationName := func(operationName string) {
-		q1 := query.Bind(span.Process.ServiceName, operationName, timeBucket, span.Duration, span.StartTime, span.TraceID)
+		q1 := query.Bind(span.Process.ServiceName, operationName, timeBucket, span.Duration, span.StartTime, span.TraceID, domainID)
 		if err2 := s.writerMetrics.durationIndex.Exec(q1, s.logger); err2 != nil {
 			s.logError(span, err2, "Cannot index duration", s.logger)
 			err = err2
@@ -228,16 +230,16 @@ func (s *SpanWriter) indexByDuration(span *dbmodel.Span, startTime time.Time) er
 	return err
 }
 
-func (s *SpanWriter) indexByService(traceID model.TraceID, span *dbmodel.Span) error {
+func (s *SpanWriter) indexByService(traceID model.TraceID, span *dbmodel.Span, domainID gocql.UUID) error {
 	bucketNo := uint64(span.SpanHash) % defaultNumBuckets
 	query := s.session.Query(serviceNameIndex)
-	q := query.Bind(span.Process.ServiceName, bucketNo, span.StartTime, span.TraceID)
+	q := query.Bind(span.Process.ServiceName, bucketNo, span.StartTime, span.TraceID, domainID)
 	return s.writerMetrics.serviceNameIndex.Exec(q, s.logger)
 }
 
-func (s *SpanWriter) indexByOperation(traceID model.TraceID, span *dbmodel.Span) error {
+func (s *SpanWriter) indexByOperation(traceID model.TraceID, span *dbmodel.Span, domainID gocql.UUID) error {
 	query := s.session.Query(serviceOperationIndex)
-	q := query.Bind(span.Process.ServiceName, span.OperationName, span.StartTime, span.TraceID)
+	q := query.Bind(span.Process.ServiceName, span.OperationName, span.StartTime, span.TraceID, domainID)
 	return s.writerMetrics.serviceOperationIndex.Exec(q, s.logger)
 }
 
@@ -265,9 +267,9 @@ func (s *SpanWriter) logError(span *dbmodel.Span, err error, msg string, logger 
 	return errors.Wrap(err, msg)
 }
 
-func (s *SpanWriter) saveServiceNameAndOperationName(serviceName, operationName string) error {
-	if err := s.serviceNamesWriter(serviceName); err != nil {
+func (s *SpanWriter) saveServiceNameAndOperationName(serviceName, operationName string, domainID gocql.UUID) error {
+	if err := s.serviceNamesWriter(serviceName, domainID); err != nil {
 		return err
 	}
-	return s.operationNamesWriter(serviceName, operationName)
+	return s.operationNamesWriter(serviceName, operationName, domainID)
 }

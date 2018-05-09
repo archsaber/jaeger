@@ -19,6 +19,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/gocql/gocql"
 	"github.com/jaegertracing/jaeger/model"
 	"github.com/jaegertracing/jaeger/model/adjuster"
 	"github.com/jaegertracing/jaeger/storage/spanstore"
@@ -120,7 +121,7 @@ func (m *Store) WriteSpan(span *model.Span) error {
 }
 
 // GetTrace gets a trace
-func (m *Store) GetTrace(traceID model.TraceID) (*model.Trace, error) {
+func (m *Store) GetTrace(traceID model.TraceID, domainID gocql.UUID) (*model.Trace, error) {
 	m.RLock()
 	defer m.RUnlock()
 	retMe := m.traces[traceID]
@@ -131,7 +132,7 @@ func (m *Store) GetTrace(traceID model.TraceID) (*model.Trace, error) {
 }
 
 // GetServices returns a list of all known services
-func (m *Store) GetServices() ([]string, error) {
+func (m *Store) GetServices(domainID gocql.UUID) ([]string, error) {
 	m.RLock()
 	defer m.RUnlock()
 	var retMe []string
@@ -142,7 +143,7 @@ func (m *Store) GetServices() ([]string, error) {
 }
 
 // GetOperations returns the operations of a given service
-func (m *Store) GetOperations(service string) ([]string, error) {
+func (m *Store) GetOperations(service string, domainID gocql.UUID) ([]string, error) {
 	m.RLock()
 	defer m.RUnlock()
 	if operations, ok := m.operations[service]; ok {

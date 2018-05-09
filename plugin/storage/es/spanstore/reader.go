@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/gocql/gocql"
 	"github.com/pkg/errors"
 	"github.com/uber/jaeger-lib/metrics"
 	"go.uber.org/zap"
@@ -107,7 +108,7 @@ func newSpanReader(client es.Client, logger *zap.Logger, maxLookback time.Durati
 }
 
 // GetTrace takes a traceID and returns a Trace associated with that traceID
-func (s *SpanReader) GetTrace(traceID model.TraceID) (*model.Trace, error) {
+func (s *SpanReader) GetTrace(traceID model.TraceID, domainID gocql.UUID) (*model.Trace, error) {
 	currentTime := time.Now()
 	traces, err := s.multiRead([]string{traceID.String()}, currentTime.Add(-s.maxLookback), currentTime)
 	if err != nil {
@@ -164,14 +165,14 @@ func indexWithDate(prefix string, date time.Time) string {
 }
 
 // GetServices returns all services traced by Jaeger, ordered by frequency
-func (s *SpanReader) GetServices() ([]string, error) {
+func (s *SpanReader) GetServices(domainID gocql.UUID) ([]string, error) {
 	currentTime := time.Now()
 	jaegerIndices := findIndices(serviceIndexPrefix, currentTime.Add(-s.maxLookback), currentTime)
 	return s.serviceOperationStorage.getServices(jaegerIndices)
 }
 
 // GetOperations returns all operations for a specific service traced by Jaeger
-func (s *SpanReader) GetOperations(service string) ([]string, error) {
+func (s *SpanReader) GetOperations(service string, domainID gocql.UUID) ([]string, error) {
 	currentTime := time.Now()
 	jaegerIndices := findIndices(serviceIndexPrefix, currentTime.Add(-s.maxLookback), currentTime)
 	return s.serviceOperationStorage.getOperations(jaegerIndices, service)

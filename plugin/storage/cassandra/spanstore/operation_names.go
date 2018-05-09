@@ -17,6 +17,7 @@ package spanstore
 import (
 	"time"
 
+	"github.com/gocql/gocql"
 	"github.com/pkg/errors"
 	"github.com/uber/jaeger-lib/metrics"
 	"go.uber.org/zap"
@@ -27,8 +28,8 @@ import (
 )
 
 const (
-	insertOperationName = `INSERT INTO operation_names(service_name, operation_name) VALUES (?, ?)`
-	queryOperationNames = `SELECT operation_name FROM operation_names WHERE service_name = ?`
+	insertOperationName = `INSERT INTO operation_names(service_name, operation_name, domain_id) VALUES (?, ?, ?)`
+	queryOperationNames = `SELECT operation_name FROM operation_names WHERE service_name = ? AND domain_id = ?`
 )
 
 // OperationNamesStorage stores known operation names by service.
@@ -67,11 +68,11 @@ func NewOperationNamesStorage(
 }
 
 // Write saves Operation and Service name tuples
-func (s *OperationNamesStorage) Write(serviceName string, operationName string) error {
+func (s *OperationNamesStorage) Write(serviceName string, operationName string, domainID gocql.UUID) error {
 	var err error
 	query := s.session.Query(s.InsertStmt)
-	if inCache := checkWriteCache(serviceName+"|"+operationName, s.operationNames, s.writeCacheTTL); !inCache {
-		q := query.Bind(serviceName, operationName)
+	if inCache := checkWriteCache(domainID.String()+"|"+serviceName+"|"+operationName, s.operationNames, s.writeCacheTTL); !inCache {
+		q := query.Bind(serviceName, operationName, domainID)
 		err2 := s.metrics.Exec(q, s.logger)
 		if err2 != nil {
 			err = err2
@@ -81,8 +82,8 @@ func (s *OperationNamesStorage) Write(serviceName string, operationName string) 
 }
 
 // GetOperations returns all operations for a specific service traced by Jaeger
-func (s *OperationNamesStorage) GetOperations(service string) ([]string, error) {
-	iter := s.session.Query(s.QueryStmt, service).Iter()
+func (s *OperationNamesStorage) GetOperations(service string, domainID gocql.UUID) ([]string, error) {
+	iter := s.session.Query(s.QueryStmt, service, domainID).Iter()
 
 	var operation string
 	var operations []string

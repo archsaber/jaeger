@@ -131,6 +131,7 @@ func (p *queryParser) parse(r *http.Request) (*traceQueryParameters, error) {
 
 	traceQuery := &traceQueryParameters{
 		TraceQueryParameters: spanstore.TraceQueryParameters{
+			DomainID:      domainIDFromRequest(r),
 			ServiceName:   service,
 			OperationName: operation,
 			StartTimeMin:  startTime,
