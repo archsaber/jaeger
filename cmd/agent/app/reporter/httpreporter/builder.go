@@ -41,6 +41,8 @@ func (b *Builder) CreateReporter(mFactory metrics.Factory, logger *zap.Logger) (
 		builder:  b,
 		jBatches: make(chan *jaeger.Batch, maxPayloadLength),
 		jPayload: make([]*jaeger.Batch, 0, maxPayloadLength),
+		zBatches: make(chan []*zipkincore.Span, maxPayloadLength),
+		zPayload: make([]*zipkincore.Span, 0, maxPayloadLength),
 	}
 	go r.watchTokenUpdates(context.Background())
 	go r.flushJBatchesPeriodic(context.Background())

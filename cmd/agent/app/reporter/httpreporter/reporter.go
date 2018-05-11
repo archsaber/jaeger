@@ -76,6 +76,7 @@ func (r *Reporter) updateClients() {
 	r.jClient = jaeger.NewCollectorClientFactory(trans, protFactory)
 	r.zClient = zipkincore.NewZipkinCollectorClientFactory(trans, protFactory)
 	r.rw.Unlock()
+	r.logger.Info("[reporter] updated collector clients")
 }
 
 func (r *Reporter) flushJBatchesPeriodic(ctx context.Context) {
@@ -98,8 +99,11 @@ func (r *Reporter) flushJBatchesPeriodic(ctx context.Context) {
 					break
 				}
 				r.rw.RLock()
-				r.jClient.SubmitBatches(r.jPayload)
+				_, err := r.jClient.SubmitBatches(r.jPayload)
 				r.rw.RUnlock()
+				if err != nil {
+					r.logger.Error(err.Error())
+				}
 
 				// reset payload buffer
 				r.jPayload = r.jPayload[:0]
@@ -129,8 +133,11 @@ func (r *Reporter) flushZBatchesPeriodic(ctx context.Context) {
 					break
 				}
 				r.rw.RLock()
-				r.zClient.SubmitZipkinBatch(r.zPayload)
+				_, err := r.zClient.SubmitZipkinBatch(r.zPayload)
 				r.rw.RUnlock()
+				if err != nil {
+					r.logger.Error(err.Error())
+				}
 
 				// reset payload buffer
 				r.zPayload = r.zPayload[:0]
@@ -145,7 +152,9 @@ func (r *Reporter) EmitZipkinBatch(spans []*zipkincore.Span) error {
 	case r.zBatches <- spans:
 		return nil
 	default:
-		return errors.New("Zipkin spans dropped due to congestion")
+		err := errors.New("Zipkin spans dropped due to congestion")
+		r.logger.Error(err.Error())
+		return err
 	}
 }
 
@@ -155,6 +164,8 @@ func (r *Reporter) EmitBatch(batch *jaeger.Batch) error {
 	case r.jBatches <- batch:
 		return nil
 	default:
-		return errors.New("Jaeger batch dropped due to congestion")
+		err := errors.New("Jaeger batch dropped due to congestion")
+		r.logger.Error(err.Error())
+		return err
 	}
 }
