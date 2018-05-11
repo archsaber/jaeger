@@ -151,18 +151,18 @@ func (r *Processor) processDDTraces() {
 
 func convertDDSpanToJaeger(s *ddmodel.Span) *jaeger.Span {
 	jaegerTags := ddMetaInfoToTags(s.GetMeta())
-	resource := s.GetResource()
+	ddName := s.GetName()
 	jaegerTags = append(jaegerTags, &jaeger.Tag{
-		Key:   "resource",
+		Key:   "operation",
 		VType: jaeger.TagType_STRING,
-		VStr:  &resource,
+		VStr:  &ddName,
 	})
 	jaegerSpan := &jaeger.Span{
 		TraceIdHigh:   0,
 		TraceIdLow:    int64(s.GetTraceID()),
 		SpanId:        int64(s.GetSpanID()),
 		ParentSpanId:  int64(s.GetParentID()),
-		OperationName: s.GetName(),
+		OperationName: s.GetResource(),
 		Flags:         1,
 		StartTime:     s.GetStart() / 1e3,
 		Duration:      s.GetDuration() / 1e3,
