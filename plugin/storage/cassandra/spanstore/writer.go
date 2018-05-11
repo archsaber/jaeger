@@ -39,8 +39,8 @@ const (
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 	insertTag = `
 		INSERT
-		INTO tag_index(trace_id, span_id, service_name, start_time, tag_key, tag_value)
-		VALUES (?, ?, ?, ?, ?, ?)`
+		INTO tag_index(trace_id, span_id, service_name, start_time, tag_key, tag_value, domain_id)
+		VALUES (?, ?, ?, ?, ?, ?, ?)`
 
 	serviceNameIndex = `
 		INSERT
@@ -199,7 +199,8 @@ func (s *SpanWriter) indexByTags(span *model.Span, ds *dbmodel.Span) error {
 		// we should introduce retries or just ignore failures imo, retrying each individual tag insertion might be better
 		// we should consider bucketing.
 		if s.shouldIndexTag(v) {
-			insertTagQuery := s.session.Query(insertTag, ds.TraceID, ds.SpanID, v.ServiceName, ds.StartTime, v.TagKey, v.TagValue)
+			insertTagQuery := s.session.Query(insertTag, ds.TraceID, ds.SpanID, v.ServiceName,
+				ds.StartTime, v.TagKey, v.TagValue, span.DomainID)
 			if err := s.writerMetrics.tagIndex.Exec(insertTagQuery, s.logger); err != nil {
 				withTagInfo := s.logger.
 					With(zap.String("tag_key", v.TagKey)).

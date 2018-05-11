@@ -168,13 +168,14 @@ CREATE TABLE IF NOT EXISTS ${keyspace}.duration_index (
 -- a bucketing strategy may have to be added for tag queries
 -- we can make this table even better by adding a timestamp to it
 CREATE TABLE IF NOT EXISTS ${keyspace}.tag_index (
+    domain_id       uuid,
     service_name    text,
     tag_key         text,
     tag_value       text,
     start_time      bigint,
     trace_id        blob,
     span_id         bigint,
-    PRIMARY KEY ((service_name, tag_key, tag_value), start_time, trace_id, span_id)
+    PRIMARY KEY ((domain_id, service_name, tag_key, tag_value), start_time, trace_id, span_id)
 )
     WITH CLUSTERING ORDER BY (start_time DESC)
     AND compaction = {
