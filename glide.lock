@@ -1,8 +1,12 @@
-hash: 3ec3a98a84c42b7e8d38061e1dc5c43888176fc282307ec91776a4017e0c0936
-updated: 2018-05-08T18:15:32.22305738+05:30
+hash: e4fd5ea5182be0fcf47077fe70da0de12cfa1969dad0016f7084ea68421f8f79
+updated: 2018-05-11T19:37:46.197882152+05:30
 imports:
 - name: github.com/apache/thrift
   version: 53dd39833a08ce33582e5ff31fa18bb4735d6731
+  subpackages:
+  - lib/go/thrift
+- name: github.com/archsaber/thrift
+  version: 3fa58ca9e108e14e64f0aaf768df24a336839603
   subpackages:
   - lib/go/thrift
 - name: github.com/asaskevich/govalidator
@@ -251,7 +255,7 @@ imports:
   - zapcore
   - zaptest
 - name: golang.org/x/net
-  version: d11bb6cd8e3c4e60239c9cb20ef68586d74500d0
+  version: f73e4c9ed3b7ebdd5f699a16a880c2b1994e50dd
   subpackages:
   - context
   - context/ctxhttp
