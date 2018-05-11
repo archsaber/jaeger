@@ -122,6 +122,7 @@ install-glide:
 .PHONY: install
 install: install-glide
 	glide install
+	rm -rf vendor/github.com/apache/thrift && mv vendor/github.com/archsaber/thrift vendor/github.com/apache
 
 .PHONY: install-go-bindata
 install-go-bindata:
