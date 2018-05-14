@@ -178,7 +178,7 @@ func (b *Builder) GetProcessors(rep reporter.Reporter, mFactory metrics.Factory)
 		retMe[idx] = processor
 	}
 	if b.DDTraceProcessorConfig.ShouldStartDDTraceProcessor() {
-		ddTraceProcessor, err := b.DDTraceProcessorConfig.NewDDTraceProcessor(rep)
+		ddTraceProcessor, err := b.DDTraceProcessorConfig.NewProcessor(rep)
 		if err != nil {
 			return nil, err
 		}
