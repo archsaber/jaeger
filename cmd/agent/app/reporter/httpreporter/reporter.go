@@ -35,37 +35,11 @@ type Reporter struct {
 	rw sync.RWMutex
 }
 
-func (r *Reporter) watchTokenUpdates(ctx context.Context) {
-	r.logger.Info("watching updates on " + r.builder.TokenFile)
-	watcher, err := fsnotify.NewWatcher()
-	if err != nil {
-		r.logger.Fatal("unable to watch for token updates")
+func (r *Reporter) updateClients(event fsnotify.Event, logger *zap.Logger) {
+	if event.Op&fsnotify.Write != fsnotify.Write &&
+		event.Op&fsnotify.Create != fsnotify.Create {
 		return
 	}
-	defer watcher.Close()
-
-	err = watcher.Add(r.builder.TokenFile)
-	if err != nil {
-		r.logger.Fatal(err.Error())
-		return
-	}
-
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case event := <-watcher.Events:
-			if event.Op&fsnotify.Write == fsnotify.Write ||
-				event.Op&fsnotify.Create == fsnotify.Create {
-				r.updateClients()
-			}
-		case err := <-watcher.Errors:
-			r.logger.Error(err.Error())
-		}
-	}
-}
-
-func (r *Reporter) updateClients() {
 	protFactory := r.builder.getNewTProtocolFactory()
 	trans, err := r.builder.getNewTTransport()
 	if err != nil {

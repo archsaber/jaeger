@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/jaegertracing/jaeger/cmd/agent/app/auth"
 	"github.com/spf13/viper"
 )
 
@@ -35,6 +36,8 @@ const (
 	ddServerHostPort          = "dd-server.host-port"
 	ddServerConnLimit         = "dd-server.conn-limit"
 	ddServerReceiverTimeout   = "dd-server.receiver-timeout"
+	ddServerExtraSampleRate   = "dd-server.extra-sample-rate"
+	ddServerMaxTPS            = "dd-server.max-tps"
 	discoveryMinPeers         = "discovery.min-peers"
 )
 
@@ -63,7 +66,7 @@ func AddFlags(flags *flag.FlagSet) {
 		"comma-separated string representing host:ports of a static list of collectors to connect to directly (e.g. when not using service discovery)")
 	flags.String(
 		authTokenFile,
-		"",
+		defaultAuthTokenFile,
 		"file containing auth token to be sent with every request to collector")
 	flags.String(
 		httpServerHostPort,
@@ -80,19 +83,23 @@ func AddFlags(flags *flag.FlagSet) {
 	flags.Int(
 		ddServerConnLimit,
 		defaultDDConnLimit,
-		"connection limit of the dd-trace processor receiving traces")
+		"connection limit of the ddtrace processor receiving traces")
 	flags.Int(
 		ddServerReceiverTimeout,
 		defaultDDReceiverTimeout,
-		"receiver timeout of the dd-trace processor receiving traces")
+		"receiver timeout of the ddtrace processor receiving traces")
 	flags.Bool(
 		ddServerEnabled,
 		defaultDDServerEnabled,
-		"whether dd-trace processor is enabled")
-	flags.Int(
-		ddServerWorkers,
-		defaultDDServerWorkers,
-		"how many workers the dd-trace processor should run")
+		"whether ddtrace processor is enabled")
+	flags.Float64(
+		ddServerExtraSampleRate,
+		defaultDDExtraSampleRate,
+		"sampling rate of dd traces")
+	flags.Float64(
+		ddServerMaxTPS,
+		defaultDDMaxTPS,
+		"max tps")
 }
 
 // InitFromViper initializes Builder with properties retrieved from Viper.
@@ -112,14 +119,16 @@ func (b *Builder) InitFromViper(v *viper.Viper) *Builder {
 	if len(v.GetString(collectorHostPort)) > 0 {
 		b.CollectorHostPorts = strings.Split(v.GetString(collectorHostPort), ",")
 	}
-	b.TokenFile = v.GetString(authTokenFile)
+
+	auth.SetTokenFilePath(v.GetString(authTokenFile))
 
 	b.HTTPServer.HostPort = v.GetString(httpServerHostPort)
 
 	b.DDTraceProcessorConfig.Enabled = v.GetBool(ddServerEnabled)
-	b.DDTraceProcessorConfig.NumProcessors = v.GetInt(ddServerWorkers)
 	b.DDTraceProcessorConfig.HostPort = v.GetString(ddServerHostPort)
 	b.DDTraceProcessorConfig.ConnectionLimit = v.GetInt(ddServerConnLimit)
 	b.DDTraceProcessorConfig.ReceiverTimeout = v.GetInt(ddServerReceiverTimeout)
+	b.DDTraceProcessorConfig.ExtraSampleRate = v.GetFloat64(ddServerExtraSampleRate)
+	b.DDTraceProcessorConfig.MaxTPS = v.GetFloat64(ddServerMaxTPS)
 	return b
 }

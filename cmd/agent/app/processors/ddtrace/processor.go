@@ -1,6 +1,7 @@
 package ddtrace
 
 import (
+	"context"
 	"errors"
 	"strconv"
 	"strings"
@@ -8,47 +9,103 @@ import (
 
 	"github.com/DataDog/datadog-trace-agent/cmd/ddtrace"
 	ddconfig "github.com/DataDog/datadog-trace-agent/config"
-	ddmodel "github.com/DataDog/datadog-trace-agent/model"
-	"github.com/jaegertracing/jaeger/cmd/agent/app/reporter"
-	"github.com/jaegertracing/jaeger/thrift-gen/jaeger"
+	"github.com/fsnotify/fsnotify"
+	"github.com/jaegertracing/jaeger/cmd/agent/app/auth"
+	"go.uber.org/zap"
 )
+
+const logFilePath = "/var/log/archsaber/archsaber-trace-agent.log"
 
 // ProcessorConfig is the config for DDTraceProcessor
 type ProcessorConfig struct {
-	Enabled         bool   `yaml:"enabled"`
-	HostPort        string `yaml:"hostPort" validate:"nonzero"`
-	ConnectionLimit int    `yaml:"connectionLimit"`
-	ReceiverTimeout int    `yaml:"receiverTimeout"`
-	NumProcessors   int    `yaml:"workers"`
-}
-
-// ShouldStartDDTraceProcessor checks if the processor is enabled and
-// has non zero workers in the config
-func (c ProcessorConfig) ShouldStartDDTraceProcessor() bool {
-	return c.Enabled && c.NumProcessors > 0
+	Enabled         bool    `yaml:"enabled"`
+	HostPort        string  `yaml:"hostPort" validate:"nonzero"`
+	ConnectionLimit int     `yaml:"connectionLimit"`
+	ReceiverTimeout int     `yaml:"receiverTimeout"`
+	ExtraSampleRate float64 `yaml:"extraSampleRate"`
+	MaxTPS          float64 `yaml:"maxtps"`
 }
 
 // Processor is a collector that uses HTTP protocol and just holds
 // a chan where the spans received are sent one by one
 type Processor struct {
-	receiver *ddtrace.HTTPReceiver
-	Traces   chan ddmodel.Trace
-	Services chan ddmodel.ServicesMetadata
+	ddAgent     *ddtrace.Agent
+	ddAgentStop context.CancelFunc
 
-	conf     ProcessorConfig
-	reporter reporter.Reporter
+	conf ProcessorConfig
 
-	processing sync.WaitGroup
-	debug      bool
+	isRunning  bool
+	stopCalled bool
+	*sync.Mutex
 }
 
 // NewProcessor returns a pointer to a new DDServer
-func (c ProcessorConfig) NewProcessor(
-	reporter reporter.Reporter) (*Processor, error) {
+func (c ProcessorConfig) NewProcessor() (*Processor, error) {
+	ddAgentConfig, err := newDDAgentConfig(c)
+	if err != nil {
+		return nil, err
+	}
+	ddAgentContext, ddAgentCancel := context.WithCancel(context.Background())
+	ddtraceProcessor := Processor{
+		ddAgent:     ddtrace.NewAgent(ddAgentContext, ddAgentConfig),
+		ddAgentStop: ddAgentCancel,
+		conf:        c,
+		isRunning:   false,
+		stopCalled:  false,
+		Mutex:       &sync.Mutex{},
+	}
+	auth.AddTokenUpdateAction(ddtraceProcessor.restartOnTokenUpdate)
 
-	traceChan := make(chan ddmodel.Trace, 5000)
-	servicesChan := make(chan ddmodel.ServicesMetadata, 50)
+	return &ddtraceProcessor, nil
+}
 
+// Serve starts doing the HTTP server and is ready to receive traces
+func (r *Processor) Serve() {
+	r.Lock()
+	defer r.Unlock()
+	// Start the agent if it is not already running
+	if !r.isRunning {
+		go r.ddAgent.Run()
+		r.isRunning = true
+		r.stopCalled = false
+	}
+}
+
+// Stop stops the processor
+func (r *Processor) Stop() {
+	r.Lock()
+	r.isRunning = false
+	r.stopCalled = true
+	r.ddAgentStop()
+	r.Unlock()
+}
+
+func (r *Processor) restartOnTokenUpdate(event fsnotify.Event, logger *zap.Logger) {
+	r.Lock()
+	defer r.Unlock()
+	if r.stopCalled == true {
+		return
+	}
+	if event.Op&fsnotify.Write != fsnotify.Write &&
+		event.Op&fsnotify.Create != fsnotify.Create {
+		return
+	}
+	logger.Info("Restarting ddagent due to token update")
+	r.ddAgentStop()
+	ddAgentConfig, err := newDDAgentConfig(r.conf)
+	if err != nil {
+		logger.Error(err.Error())
+		return
+	}
+
+	ddAgentContext, ddAgentCancel := context.WithCancel(context.Background())
+	r.ddAgent = ddtrace.NewAgent(ddAgentContext, ddAgentConfig)
+	r.ddAgentStop = ddAgentCancel
+	go r.ddAgent.Run()
+	r.isRunning = true
+}
+
+func newDDAgentConfig(c ProcessorConfig) (*ddconfig.AgentConfig, error) {
 	conf := ddconfig.NewDefaultAgentConfig()
 	conf.ConnectionLimit = c.ConnectionLimit
 	conf.ReceiverTimeout = c.ReceiverTimeout
@@ -62,98 +119,9 @@ func (c ProcessorConfig) NewProcessor(
 		return nil, err
 	}
 	conf.ReceiverPort = int(receiverPort)
-
-	// use buffered channels so that handlers are not waiting on downstream processing
-	ddtraceProcessor := Processor{
-		receiver: ddtrace.NewHTTPReceiver(conf, ddconfig.NewDynamicConfig(), traceChan, servicesChan),
-		Traces:   traceChan,
-		Services: servicesChan,
-
-		conf:     c,
-		reporter: reporter,
-		debug:    false,
-	}
-
-	return &ddtraceProcessor, nil
-}
-
-// Serve starts doing the HTTP server and is ready to receive traces
-func (r *Processor) Serve() {
-	r.processing.Add(r.conf.NumProcessors)
-	for i := 0; i < r.conf.NumProcessors; i++ {
-		go r.processDDTraces()
-	}
-	r.receiver.Run()
-}
-
-// Stop stops the processor
-func (r *Processor) Stop() {
-	// close the workers by closing the channels from which they read
-	close(r.Traces)
-	close(r.Services)
-
-	// close the server
-	r.receiver.Stop()
-
-	r.processing.Wait()
-}
-
-func (r *Processor) processDDTraces() {
-	for t := range r.Traces {
-		jaegerSpans := make([]*jaeger.Span, 0, len(t))
-		for _, s := range t {
-			jaegerSpans = append(jaegerSpans, convertDDSpanToJaeger(s))
-		}
-		env := t.GetEnv()
-		r.reporter.EmitBatch(
-			&jaeger.Batch{
-				Process: &jaeger.Process{
-					ServiceName: t.GetRoot().Service,
-					Tags: []*jaeger.Tag{
-						&jaeger.Tag{
-							Key:   "env",
-							VType: jaeger.TagType_STRING,
-							VStr:  &env,
-						},
-					},
-				},
-				Spans: jaegerSpans,
-			},
-		)
-	}
-}
-
-func convertDDSpanToJaeger(s *ddmodel.Span) *jaeger.Span {
-	jaegerTags := ddMetaInfoToTags(s.GetMeta())
-	ddName := s.Name
-	jaegerTags = append(jaegerTags, &jaeger.Tag{
-		Key:   "operation",
-		VType: jaeger.TagType_STRING,
-		VStr:  &ddName,
-	})
-	jaegerSpan := &jaeger.Span{
-		TraceIdHigh:   0,
-		TraceIdLow:    int64(s.TraceID),
-		SpanId:        int64(s.SpanID),
-		ParentSpanId:  int64(s.ParentID),
-		OperationName: s.Resource,
-		Flags:         1,
-		StartTime:     s.Start / 1e3,
-		Duration:      s.Duration / 1e3,
-		Tags:          jaegerTags,
-	}
-	return jaegerSpan
-}
-
-func ddMetaInfoToTags(meta map[string]string) []*jaeger.Tag {
-	jaegerTags := make([]*jaeger.Tag, 0, len(meta)+1)
-	for k := range meta {
-		val := meta[k]
-		jaegerTags = append(jaegerTags, &jaeger.Tag{
-			Key:   k,
-			VType: jaeger.TagType_STRING,
-			VStr:  &val,
-		})
-	}
-	return jaegerTags
+	conf.APIKey = auth.GetToken()
+	conf.LogFilePath = logFilePath
+	conf.ExtraSampleRate = c.ExtraSampleRate
+	conf.MaxTPS = c.MaxTPS
+	return conf, nil
 }
