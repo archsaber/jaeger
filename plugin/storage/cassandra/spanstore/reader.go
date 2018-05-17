@@ -62,7 +62,8 @@ const (
 	defaultNumTraces = 100
 	// limitMultiple exists because many spans that are returned from indices can have the same trace, limitMultiple increases
 	// the number of responses from the index, so we can respect the user's limit value they provided.
-	limitMultiple = 3
+	limitMultiple           = 3
+	limitMultipleForService = limitMultiple * 2
 )
 
 var (
@@ -356,7 +357,7 @@ func (s *SpanReader) queryByService(tq *spanstore.TraceQueryParameters) (dbmodel
 		model.TimeAsEpochMicroseconds(tq.StartTimeMin),
 		model.TimeAsEpochMicroseconds(tq.StartTimeMax),
 		tq.DomainID,
-		tq.NumTraces*limitMultiple,
+		tq.NumTraces*limitMultipleForService,
 	).PageSize(0)
 	return s.executeQuery(query, s.metrics.queryServiceNameIndex)
 }
