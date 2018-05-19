@@ -1,13 +1,11 @@
 package ddtrace
 
 import (
-	"context"
 	"errors"
 	"strconv"
 	"strings"
 	"sync"
 
-	"github.com/DataDog/datadog-trace-agent/cmd/ddtrace"
 	ddconfig "github.com/DataDog/datadog-trace-agent/config"
 	"github.com/fsnotify/fsnotify"
 	"github.com/jaegertracing/jaeger/cmd/agent/app/auth"
@@ -29,8 +27,7 @@ type ProcessorConfig struct {
 // Processor is a collector that uses HTTP protocol and just holds
 // a chan where the spans received are sent one by one
 type Processor struct {
-	ddAgent     *ddtrace.Agent
-	ddAgentStop context.CancelFunc
+	agent *ddAgent
 
 	conf ProcessorConfig
 
@@ -45,14 +42,13 @@ func (c ProcessorConfig) NewProcessor() (*Processor, error) {
 	if err != nil {
 		return nil, err
 	}
-	ddAgentContext, ddAgentCancel := context.WithCancel(context.Background())
+
 	ddtraceProcessor := Processor{
-		ddAgent:     ddtrace.NewAgent(ddAgentContext, ddAgentConfig),
-		ddAgentStop: ddAgentCancel,
-		conf:        c,
-		isRunning:   false,
-		stopCalled:  false,
-		Mutex:       &sync.Mutex{},
+		agent:      newDDAgent(ddAgentConfig),
+		conf:       c,
+		isRunning:  false,
+		stopCalled: false,
+		Mutex:      &sync.Mutex{},
 	}
 	auth.AddTokenUpdateAction(ddtraceProcessor.restartOnTokenUpdate)
 
@@ -65,7 +61,7 @@ func (r *Processor) Serve() {
 	defer r.Unlock()
 	// Start the agent if it is not already running
 	if !r.isRunning {
-		go r.ddAgent.Run()
+		go r.agent.start()
 		r.isRunning = true
 		r.stopCalled = false
 	}
@@ -76,7 +72,7 @@ func (r *Processor) Stop() {
 	r.Lock()
 	r.isRunning = false
 	r.stopCalled = true
-	r.ddAgentStop()
+	r.agent.stop()
 	r.Unlock()
 }
 
@@ -90,18 +86,19 @@ func (r *Processor) restartOnTokenUpdate(event fsnotify.Event, logger *zap.Logge
 		event.Op&fsnotify.Create != fsnotify.Create {
 		return
 	}
+
 	logger.Info("Restarting ddagent due to token update")
-	r.ddAgentStop()
 	ddAgentConfig, err := newDDAgentConfig(r.conf)
 	if err != nil {
 		logger.Error(err.Error())
 		return
 	}
 
-	ddAgentContext, ddAgentCancel := context.WithCancel(context.Background())
-	r.ddAgent = ddtrace.NewAgent(ddAgentContext, ddAgentConfig)
-	r.ddAgentStop = ddAgentCancel
-	go r.ddAgent.Run()
+	// Make sure that the agent is stopped before starting a new one
+	r.agent.stop()
+
+	r.agent = newDDAgent(ddAgentConfig)
+	go r.agent.start()
 	r.isRunning = true
 }
 
