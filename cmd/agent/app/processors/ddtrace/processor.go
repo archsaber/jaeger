@@ -7,7 +7,6 @@ import (
 	"sync"
 
 	ddconfig "github.com/DataDog/datadog-trace-agent/config"
-	"github.com/fsnotify/fsnotify"
 	"github.com/jaegertracing/jaeger/cmd/agent/app/auth"
 	"go.uber.org/zap"
 )
@@ -50,7 +49,7 @@ func (c ProcessorConfig) NewProcessor() (*Processor, error) {
 		stopCalled: false,
 		Mutex:      &sync.Mutex{},
 	}
-	auth.AddTokenUpdateAction(ddtraceProcessor.restartOnTokenUpdate)
+	auth.AddTokenUpdateAction(ddtraceProcessor.restartOnTokenChange)
 
 	return &ddtraceProcessor, nil
 }
@@ -76,18 +75,13 @@ func (r *Processor) Stop() {
 	r.Unlock()
 }
 
-func (r *Processor) restartOnTokenUpdate(event fsnotify.Event, logger *zap.Logger) {
+func (r *Processor) restartOnTokenChange(logger *zap.Logger) {
 	r.Lock()
 	defer r.Unlock()
 	if r.stopCalled == true {
 		return
 	}
-	if event.Op&fsnotify.Write != fsnotify.Write &&
-		event.Op&fsnotify.Create != fsnotify.Create {
-		return
-	}
 
-	logger.Info("Restarting ddagent due to token update")
 	ddAgentConfig, err := newDDAgentConfig(r.conf)
 	if err != nil {
 		logger.Error(err.Error())
@@ -96,10 +90,12 @@ func (r *Processor) restartOnTokenUpdate(event fsnotify.Event, logger *zap.Logge
 
 	// Make sure that the agent is stopped before starting a new one
 	r.agent.stop()
+	logger.Info("Stopped ddagent due to token update")
 
 	r.agent = newDDAgent(ddAgentConfig)
 	go r.agent.start()
 	r.isRunning = true
+	logger.Info("Started ddagent due to token update")
 }
 
 func newDDAgentConfig(c ProcessorConfig) (*ddconfig.AgentConfig, error) {

@@ -6,7 +6,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/fsnotify/fsnotify"
 	"github.com/jaegertracing/jaeger/thrift-gen/jaeger"
 	"github.com/jaegertracing/jaeger/thrift-gen/zipkincore"
 	"go.uber.org/zap"
@@ -35,11 +34,7 @@ type Reporter struct {
 	rw sync.RWMutex
 }
 
-func (r *Reporter) updateClients(event fsnotify.Event, logger *zap.Logger) {
-	if event.Op&fsnotify.Write != fsnotify.Write &&
-		event.Op&fsnotify.Create != fsnotify.Create {
-		return
-	}
+func (r *Reporter) updateClients(logger *zap.Logger) {
 	protFactory := r.builder.getNewTProtocolFactory()
 	trans, err := r.builder.getNewTTransport()
 	if err != nil {

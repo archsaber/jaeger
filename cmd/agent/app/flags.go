@@ -120,7 +120,7 @@ func (b *Builder) InitFromViper(v *viper.Viper) *Builder {
 		b.CollectorHostPorts = strings.Split(v.GetString(collectorHostPort), ",")
 	}
 
-	auth.SetTokenFilePath(v.GetString(authTokenFile))
+	auth.InitConfig(v.GetString(authTokenFile))
 
 	b.HTTPServer.HostPort = v.GetString(httpServerHostPort)
 

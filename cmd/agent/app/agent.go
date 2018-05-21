@@ -54,7 +54,7 @@ func (a *Agent) Run() error {
 	}
 	ctx, stopTokenWatch := context.WithCancel(context.Background())
 	a.stopTokenWatch = stopTokenWatch
-	go auth.WatchTokenFile(ctx, a.logger)
+	go auth.WatchTokenChanges(ctx, a.logger)
 	return nil
 }
 
