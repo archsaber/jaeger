@@ -22,6 +22,7 @@ import (
 	"net/url"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gorilla/mux"
@@ -155,7 +156,12 @@ func (aH *APIHandler) handleFunc(
 
 	// authorization middleware
 	authMiddleware := func(w http.ResponseWriter, r *http.Request) {
-		claims, err := jwt.CheckTokenValidity(r.Header.Get("Authorization"), os.Getenv("SECRET_KEY"))
+		authHeader := r.Header.Get("Authorization")
+		if len(authHeader) < 6 || strings.ToUpper(authHeader[0:6]) != "BEARER" {
+			aH.handleError(w, errors.New("token should start with bearer "), http.StatusUnauthorized)
+			return
+		}
+		claims, err := jwt.CheckTokenValidity(authHeader[7:], os.Getenv("SECRET_KEY"))
 		if aH.handleError(w, err, http.StatusUnauthorized) {
 			return
 		}
