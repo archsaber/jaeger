@@ -15,7 +15,10 @@
 package app
 
 import (
+	"context"
 	"io"
+
+	"github.com/jaegertracing/jaeger/cmd/agent/app/auth"
 
 	"go.uber.org/zap"
 
@@ -24,9 +27,10 @@ import (
 
 // Agent is a composition of all services / components
 type Agent struct {
-	processors []processors.Processor
-	logger     *zap.Logger
-	closer     io.Closer
+	processors     []processors.Processor
+	logger         *zap.Logger
+	closer         io.Closer
+	stopTokenWatch context.CancelFunc
 }
 
 // NewAgent creates the new Agent.
@@ -48,11 +52,17 @@ func (a *Agent) Run() error {
 	for _, processor := range a.processors {
 		go processor.Serve()
 	}
+	ctx, stopTokenWatch := context.WithCancel(context.Background())
+	a.stopTokenWatch = stopTokenWatch
+	go auth.WatchTokenChanges(ctx, a.logger)
 	return nil
 }
 
 // Stop forces all agent go routines to exit.
 func (a *Agent) Stop() {
+	if a.stopTokenWatch != nil {
+		a.stopTokenWatch()
+	}
 	for _, processor := range a.processors {
 		go processor.Stop()
 	}

@@ -1,12 +1,11 @@
 package httpreporter
 
 import (
-	"bufio"
 	"context"
 	"errors"
-	"os"
 
 	"github.com/apache/thrift/lib/go/thrift"
+	"github.com/jaegertracing/jaeger/cmd/agent/app/auth"
 	"github.com/jaegertracing/jaeger/thrift-gen/jaeger"
 	"github.com/jaegertracing/jaeger/thrift-gen/zipkincore"
 	"github.com/uber/jaeger-lib/metrics"
@@ -17,7 +16,6 @@ import (
 type Builder struct {
 	// CollectorHostPort are host:ports of a static list of Jaeger Collectors.
 	CollectorHostPorts []string `yaml:"collectorHTTPHostPorts"`
-	TokenFile          string   `yaml:"tokenFile"`
 
 	transport thrift.TTransport
 }
@@ -44,7 +42,7 @@ func (b *Builder) CreateReporter(mFactory metrics.Factory, logger *zap.Logger) (
 		zBatches: make(chan []*zipkincore.Span, maxPayloadLength),
 		zPayload: make([]*zipkincore.Span, 0, maxPayloadLength),
 	}
-	go r.watchTokenUpdates(context.Background())
+	auth.AddTokenUpdateAction(r.updateClients)
 	go r.flushJBatchesPeriodic(context.Background())
 	go r.flushZBatchesPeriodic(context.Background())
 	return r, nil
@@ -59,7 +57,7 @@ func (b *Builder) getNewTTransport() (thrift.TTransport, error) {
 		b.transport.Close()
 		b.transport = nil
 	}
-	token := readTokenFromFile(b.TokenFile)
+	token := auth.GetToken()
 	if len(b.CollectorHostPorts) == 0 {
 		return nil, errors.New("collector address string not specified")
 	}
@@ -75,18 +73,4 @@ func (b *Builder) getNewTTransport() (thrift.TTransport, error) {
 	}
 	b.transport = httpTransport
 	return httpTransport, nil
-}
-
-func readTokenFromFile(tokenFile string) string {
-	file, err := os.Open(tokenFile)
-	if err != nil {
-		return ""
-	}
-	defer file.Close()
-
-	scanner := bufio.NewScanner(file)
-	if scanner.Scan() {
-		return scanner.Text()
-	}
-	return ""
 }

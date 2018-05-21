@@ -49,6 +49,9 @@ const (
 	defaultDDServerHostPort  = "localhost:8126"
 	defaultDDConnLimit       = 2000
 	defaultDDReceiverTimeout = 0
+	defaultDDExtraSampleRate = 1.0
+	defaultDDMaxTPS          = 10
+	defaultAuthTokenFile     = "/etc/opt/archsaber/archsaber.token"
 
 	jaegerModel Model = "jaeger"
 	zipkinModel       = "zipkin"
@@ -177,8 +180,8 @@ func (b *Builder) GetProcessors(rep reporter.Reporter, mFactory metrics.Factory)
 		}
 		retMe[idx] = processor
 	}
-	if b.DDTraceProcessorConfig.ShouldStartDDTraceProcessor() {
-		ddTraceProcessor, err := b.DDTraceProcessorConfig.NewDDTraceProcessor(rep)
+	if b.DDTraceProcessorConfig.Enabled {
+		ddTraceProcessor, err := b.DDTraceProcessorConfig.NewProcessor()
 		if err != nil {
 			return nil, err
 		}
