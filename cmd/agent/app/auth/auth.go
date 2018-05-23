@@ -32,7 +32,11 @@ func (c *Configuration) getToken() string {
 func (c *Configuration) refreshToken() {
 	c.Lock()
 	defer c.Unlock()
-	c.token = readTokenFromFile(c.tokenFilePath)
+	newToken := readTokenFromFile(c.tokenFilePath)
+	// Only update if the new token is not empty
+	if newToken != "" {
+		c.token = newToken
+	}
 }
 
 func (c *Configuration) init(tokenFilePath string) {
