@@ -5,6 +5,7 @@ import (
 	"context"
 	"os"
 	"sync"
+	"time"
 
 	"github.com/fsnotify/fsnotify"
 	"go.uber.org/zap"
@@ -51,6 +52,14 @@ var config = &Configuration{}
 // InitConfig initializes the auth configuration
 func InitConfig(tokenFilePath string) {
 	config.init(tokenFilePath)
+	for i := 0; i < 5; i++ {
+		if config.getToken() != "" {
+			return
+		}
+		config.refreshToken()
+		time.Sleep(time.Second)
+	}
+	panic("ArchSaber token file not found. Make sure the infra agent is up and running and then restart this agent.")
 }
 
 type actionList struct {
