@@ -15,6 +15,7 @@
 package app
 
 import (
+	"bytes"
 	"compress/gzip"
 	"context"
 	"encoding/json"
@@ -31,8 +32,10 @@ import (
 	"github.com/apache/thrift/lib/go/thrift"
 	"github.com/gogo/protobuf/proto"
 	"github.com/gorilla/mux"
+	avroKafka "github.com/jaegertracing/jaeger/avro-gen/kafka"
 	"github.com/jaegertracing/jaeger/pkg/jwt"
 	tJaeger "github.com/jaegertracing/jaeger/thrift-gen/jaeger"
+	goKafka "github.com/segmentio/kafka-go"
 	tchanThrift "github.com/uber/tchannel-go/thrift"
 )
 
@@ -62,14 +65,17 @@ func (aP *apiProcessor) SubmitBatches(batches []*tJaeger.Batch) ([]*tJaeger.Batc
 // APIHandler handles all HTTP calls to the collector
 type APIHandler struct {
 	jaegerBatchesHandler JaegerBatchesHandler
+	statsProducer        *goKafka.Writer
 }
 
 // NewAPIHandler returns a new APIHandler
 func NewAPIHandler(
 	jaegerBatchesHandler JaegerBatchesHandler,
+	producer *goKafka.Writer,
 ) *APIHandler {
 	return &APIHandler{
 		jaegerBatchesHandler: jaegerBatchesHandler,
+		statsProducer:        producer,
 	}
 }
 
@@ -139,10 +145,22 @@ func (aH *APIHandler) handleDDTraces(w http.ResponseWriter, r *http.Request) {
 }
 
 func (aH *APIHandler) handleDDStats(w http.ResponseWriter, r *http.Request) {
-	_, err := jwt.CheckTokenValidity(r.Header.Get(writer.APIHTTPHeaderKey),
+	tokenClaims, err := jwt.CheckTokenValidity(r.Header.Get(writer.APIHTTPHeaderKey),
 		os.Getenv("SECRET_KEY"))
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusUnauthorized)
+		return
+	}
+	geneuuid, ok1 := tokenClaims["geneuuid"]
+	domain, ok2 := tokenClaims["domain"]
+	if !ok1 || !ok2 {
+		http.Error(w, "Incomplete token", http.StatusUnauthorized)
+		return
+	}
+	nodeuuid, ok1 := geneuuid.(string)
+	domainid, ok2 := domain.(string)
+	if !ok1 || !ok2 {
+		http.Error(w, "Invalid token", http.StatusUnauthorized)
 		return
 	}
 	rBodyReader, err := gzip.NewReader(r.Body)
@@ -161,7 +179,49 @@ func (aH *APIHandler) handleDDStats(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	return
+	var kafkaMessages []goKafka.Message
+	var rawMessage bytes.Buffer
+	for _, statBucket := range statsPayload.Stats {
+		for _, count := range statBucket.Counts {
+			var service, resource, env, httpstatuscode string
+			for _, tag := range count.TagSet {
+				switch tag.Name {
+				case "service":
+					service = tag.Value
+				case "resource":
+					resource = tag.Value
+				case "env":
+					env = tag.Value
+				case "http.status_code":
+					httpstatuscode = tag.Value
+				}
+			}
+			avro := &avroKafka.StatsPoint{
+				Start:    statBucket.Start,
+				Duration: statBucket.Duration,
+				Measure:  count.Measure,
+				Value:    count.Value,
+				DomainID: domainid,
+				NodeUUID: nodeuuid,
+				Service:  service,
+				// Stats are sent only for top level spans
+				Operation:      getJaegerOperationName(count.Name, resource, true),
+				Env:            env,
+				HTTPStatusCode: httpstatuscode,
+			}
+			rawMessage.Reset()
+			err := json.NewEncoder(&rawMessage).Encode(avro)
+			if err != nil {
+				continue
+			}
+			kafkaMessages = append(kafkaMessages, goKafka.Message{
+				Key:   []byte(avro.DomainID),
+				Value: rawMessage.Bytes(),
+				Time:  time.Unix(0, avro.Start+avro.Duration),
+			})
+		}
+	}
+	aH.statsProducer.WriteMessages(context.Background(), kafkaMessages...)
 }
 
 func (aH *APIHandler) saveSpan(w http.ResponseWriter, r *http.Request) {
@@ -228,18 +288,19 @@ func convertDDSpanToJaeger(s *model.Span) *tJaeger.Span {
 			VDouble: &val,
 		})
 	}
-	ddName := s.Name
+
 	jaegerTags = append(jaegerTags, &tJaeger.Tag{
-		Key:   "operation",
+		Key:   "resource",
 		VType: tJaeger.TagType_STRING,
-		VStr:  &ddName,
+		VStr:  &s.Resource,
 	})
+
 	jaegerSpan := &tJaeger.Span{
 		TraceIdHigh:   0,
 		TraceIdLow:    int64(s.TraceID),
 		SpanId:        int64(s.SpanID),
 		ParentSpanId:  int64(s.ParentID),
-		OperationName: s.Resource,
+		OperationName: getJaegerOperationName(s.Name, s.Resource, s.TopLevel()),
 		Flags:         1,
 		StartTime:     s.Start / 1e3,
 		Duration:      s.Duration / 1e3,
@@ -259,4 +320,15 @@ func ddMetaInfoToTags(meta map[string]string) []*tJaeger.Tag {
 		})
 	}
 	return jaegerTags
+}
+
+func getJaegerOperationName(ddName, ddResource string, isTopLevel bool) string {
+	jaegerOperation := ddName
+	if isTopLevel {
+		ddResource, ok := model.NormMetricNameParse(ddResource)
+		if ok && ddResource != ddName {
+			jaegerOperation += " - " + ddResource
+		}
+	}
+	return jaegerOperation
 }

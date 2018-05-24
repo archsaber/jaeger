@@ -26,6 +26,7 @@ import (
 	"syscall"
 
 	"github.com/gorilla/mux"
+	goKafka "github.com/segmentio/kafka-go"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"github.com/uber/jaeger-lib/metrics"
@@ -134,7 +135,15 @@ func main() {
 			ch.Serve(listener)
 
 			r := mux.NewRouter()
-			apiHandler := app.NewAPIHandler(jaegerBatchesHandler)
+			apiHandler := app.NewAPIHandler(jaegerBatchesHandler,
+				goKafka.NewWriter(
+					goKafka.WriterConfig{
+						Brokers: []string{"bootstrap.kafka:9092"},
+						Topic:   "ddstats",
+						Async:   true,
+					},
+				),
+			)
 			apiHandler.RegisterRoutes(r)
 			if h := mBldr.Handler(); h != nil {
 				logger.Info("Registering metrics handler with HTTP server", zap.String("route", mBldr.HTTPRoute))
