@@ -325,8 +325,7 @@ func ddMetaInfoToTags(meta map[string]string) []*tJaeger.Tag {
 func getJaegerOperationName(ddName, ddResource string, isTopLevel bool) string {
 	jaegerOperation := ddName
 	if isTopLevel {
-		ddResource, ok := model.NormMetricNameParse(ddResource)
-		if ok && ddResource != ddName {
+		if normResource, ok := model.NormMetricNameParse(ddResource); ok && normResource != ddName {
 			jaegerOperation += " - " + ddResource
 		}
 	}
