@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/gocql/gocql"
+	opentracing "github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
 	"github.com/uber/jaeger-lib/metrics"
 	"go.uber.org/zap"
@@ -147,6 +148,8 @@ func (s *SpanReader) GetOperations(service string, domainID gocql.UUID) ([]strin
 }
 
 func (s *SpanReader) readTrace(traceID dbmodel.TraceID, domainID gocql.UUID) (*model.Trace, error) {
+	readTraceSpan := opentracing.StartSpan("read-trace")
+	defer readTraceSpan.Finish()
 	start := time.Now()
 	q := s.session.Query(querySpanByTraceID, traceID, domainID)
 	i := q.Consistency(s.consistency).Iter()
@@ -159,7 +162,13 @@ func (s *SpanReader) readTrace(traceID dbmodel.TraceID, domainID gocql.UUID) (*m
 	var tags []dbmodel.KeyValue
 	var logs []dbmodel.Log
 	retMe := &model.Trace{}
+
+	numScans := 0
+
+	cassandraScan := opentracing.StartSpan("cassandra-scan", opentracing.ChildOf(readTraceSpan.Context()))
 	for i.Scan(&traceIDFromSpan, &spanID, &parentID, &operationName, &flags, &startTime, &duration, &tags, &logs, &refs, &dbProcess) {
+		cassandraScan.Finish()
+		numScans++
 		dbSpan := dbmodel.Span{
 			TraceID:       traceIDFromSpan,
 			SpanID:        spanID,
@@ -181,7 +190,10 @@ func (s *SpanReader) readTrace(traceID dbmodel.TraceID, domainID gocql.UUID) (*m
 			return nil, err
 		}
 		retMe.Spans = append(retMe.Spans, span)
+		cassandraScan = opentracing.StartSpan("cassandra-scan", opentracing.ChildOf(readTraceSpan.Context()))
 	}
+	cassandraScan.Finish()
+	readTraceSpan.SetTag("num-scans", numScans)
 
 	err := i.Close()
 	s.metrics.readTraces.Emit(err, time.Since(start))
@@ -229,11 +241,16 @@ func (s *SpanReader) FindTraces(traceQuery *spanstore.TraceQueryParameters) ([]*
 	if traceQuery.NumTraces == 0 {
 		traceQuery.NumTraces = defaultNumTraces
 	}
+	span := opentracing.StartSpan("find-traces")
 	uniqueTraceIDs, err := s.findTraceIDs(traceQuery)
+	span.Finish()
 	if err != nil {
 		return nil, err
 	}
 	var retMe []*model.Trace
+	readTracesSpan := opentracing.StartSpan("read-traces")
+	readTracesSpan.SetTag("num-traceids", len(uniqueTraceIDs))
+	defer readTracesSpan.Finish()
 	for traceID := range uniqueTraceIDs {
 		if len(retMe) >= traceQuery.NumTraces {
 			break

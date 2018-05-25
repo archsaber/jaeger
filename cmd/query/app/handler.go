@@ -244,19 +244,25 @@ func (aH *APIHandler) search(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	cassandraSpan, _ := opentracing.StartSpanFromContext(r.Context(), "cassandra-query")
 	var uiErrors []structuredError
 	var tracesFromStorage []*model.Trace
 	if len(tQuery.traceIDs) > 0 {
 		tracesFromStorage, uiErrors, err = aH.tracesByIDs(tQuery.traceIDs, domainIDFromRequest(r))
 		if aH.handleError(w, err, http.StatusInternalServerError) {
+			cassandraSpan.SetTag("error", err)
+			cassandraSpan.Finish()
 			return
 		}
 	} else {
 		tracesFromStorage, err = aH.spanReader.FindTraces(&tQuery.TraceQueryParameters)
 		if aH.handleError(w, err, http.StatusInternalServerError) {
+			cassandraSpan.SetTag("error", err)
+			cassandraSpan.Finish()
 			return
 		}
 	}
+	cassandraSpan.Finish()
 
 	uiTraces := make([]*ui.Trace, len(tracesFromStorage))
 	for i, v := range tracesFromStorage {

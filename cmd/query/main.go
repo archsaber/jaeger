@@ -23,7 +23,9 @@ import (
 	"strconv"
 	"syscall"
 
+	ddtrace "github.com/DataDog/dd-trace-go/opentracing"
 	"github.com/gorilla/handlers"
+	opentracing "github.com/opentracing/opentracing-go"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	jaegerClientConfig "github.com/uber/jaeger-client-go/config"
@@ -110,6 +112,22 @@ func main() {
 				app.HandlerOptions.Tracer(tracer),
 			}
 			apiHandlerOptions = append(apiHandlerOptions, archiveOptions(storageFactory, logger)...)
+
+			traceConfig := ddtrace.NewConfiguration()
+			traceConfig.ServiceName = "jaeger-query"
+			traceConfig.AgentHostname = os.Getenv("NODE_NAME")
+			if traceConfig.AgentHostname != "" {
+				log.Println("NODE_NAME env var: ", traceConfig.AgentHostname)
+				tracer, closer, err = ddtrace.NewTracer(traceConfig)
+				if err == nil {
+					opentracing.SetGlobalTracer(tracer)
+					apiHandlerOptions = append(apiHandlerOptions, app.HandlerOptions.Tracer(tracer))
+					defer closer.Close()
+				}
+			} else {
+				log.Println("NODE_NAME env var not set")
+			}
+
 			apiHandler := app.NewAPIHandler(
 				spanReader,
 				dependencyReader,

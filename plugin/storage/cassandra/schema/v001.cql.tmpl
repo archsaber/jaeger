@@ -65,7 +65,7 @@ CREATE TABLE IF NOT EXISTS ${keyspace}.traces (
     logs            list<frozen<log>>,
     refs            list<frozen<span_ref>>,
     process         frozen<process>,
-    PRIMARY KEY (domain_id, trace_id, span_id, span_hash)
+    PRIMARY KEY ((domain_id, trace_id), span_id, span_hash)
 )
     WITH compaction = {
         'compaction_window_size': '1', 
