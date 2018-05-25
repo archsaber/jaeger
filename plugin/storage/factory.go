@@ -29,6 +29,7 @@ import (
 	"github.com/jaegertracing/jaeger/storage"
 	"github.com/jaegertracing/jaeger/storage/dependencystore"
 	"github.com/jaegertracing/jaeger/storage/spanstore"
+	"github.com/jaegertracing/jaeger/storage/statstore"
 )
 
 const (
@@ -112,6 +113,15 @@ func (f *Factory) CreateDependencyReader() (dependencystore.Reader, error) {
 		return nil, fmt.Errorf("No %s backend registered for span store", f.DependenciesStorageType)
 	}
 	return factory.CreateDependencyReader()
+}
+
+// CreateStatReader implements storage.Factory
+func (f *Factory) CreateStatReader() (statstore.Reader, error) {
+	factory, ok := f.factories[f.DependenciesStorageType]
+	if !ok {
+		return nil, fmt.Errorf("No %s backend registered for span store", f.DependenciesStorageType)
+	}
+	return factory.CreateStatReader()
 }
 
 // AddFlags implements plugin.Configurable

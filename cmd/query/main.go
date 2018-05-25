@@ -107,6 +107,11 @@ func main() {
 				logger.Fatal("Failed to create dependency reader", zap.Error(err))
 			}
 
+			statReader, err := storageFactory.CreateStatReader()
+			if err != nil {
+				logger.Fatal("Failed to create stat reader", zap.Error(err))
+			}
+
 			apiHandlerOptions := []app.HandlerOption{
 				app.HandlerOptions.Logger(logger),
 				app.HandlerOptions.Tracer(tracer),
@@ -131,6 +136,7 @@ func main() {
 			apiHandler := app.NewAPIHandler(
 				spanReader,
 				dependencyReader,
+				statReader,
 				apiHandlerOptions...)
 			r := app.NewRouter()
 			if queryOpts.BasePath != "/" {

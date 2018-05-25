@@ -25,9 +25,11 @@ import (
 	"github.com/jaegertracing/jaeger/pkg/cassandra/config"
 	cDepStore "github.com/jaegertracing/jaeger/plugin/storage/cassandra/dependencystore"
 	cSpanStore "github.com/jaegertracing/jaeger/plugin/storage/cassandra/spanstore"
+	cStatStore "github.com/jaegertracing/jaeger/plugin/storage/cassandra/statstore"
 	"github.com/jaegertracing/jaeger/storage"
 	"github.com/jaegertracing/jaeger/storage/dependencystore"
 	"github.com/jaegertracing/jaeger/storage/spanstore"
+	"github.com/jaegertracing/jaeger/storage/statstore"
 )
 
 const (
@@ -107,6 +109,11 @@ func (f *Factory) CreateSpanWriter() (spanstore.Writer, error) {
 // CreateDependencyReader implements storage.Factory
 func (f *Factory) CreateDependencyReader() (dependencystore.Reader, error) {
 	return cDepStore.NewDependencyStore(f.primarySession, f.Options.DepStoreDataFrequency, f.primaryMetricsFactory, f.logger), nil
+}
+
+// CreateStatReader implements storage.Factory
+func (f *Factory) CreateStatReader() (statstore.Reader, error) {
+	return cStatStore.NewStatReader(f.primarySession, f.logger), nil
 }
 
 // CreateArchiveSpanReader implements storage.ArchiveFactory

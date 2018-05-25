@@ -22,6 +22,7 @@ import (
 
 	"github.com/jaegertracing/jaeger/storage/dependencystore"
 	"github.com/jaegertracing/jaeger/storage/spanstore"
+	"github.com/jaegertracing/jaeger/storage/statstore"
 )
 
 // Factory defines an interface for a factory that can create implementations of different storage components.
@@ -43,6 +44,9 @@ type Factory interface {
 
 	// CreateDependencyReader creates a dependencystore.Reader.
 	CreateDependencyReader() (dependencystore.Reader, error)
+
+	// CreateStatReader creates a statstore.Reader.
+	CreateStatReader() (statstore.Reader, error)
 }
 
 var (

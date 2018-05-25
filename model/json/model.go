@@ -108,3 +108,26 @@ type DependencyLink struct {
 	Child     string `json:"child"`
 	CallCount uint64 `json:"callCount"`
 }
+
+// StatPoint represents a single data point
+type StatPoint struct {
+	Timestamp int64   `json:"timestamp"`
+	Value     float64 `json:"value"`
+}
+
+// StatSeriesKey is the primary key for a stats time-series
+type StatSeriesKey struct {
+	DomainID      string `json:"domainID"`
+	Environment   string `json:"environment"`
+	ServiceName   string `json:"serviceName"`
+	OperationName string `json:"operationName"`
+	Measure       string `json:"measure"`
+	StartTime     int64  `json:"startTime"`
+	EndTime       int64  `json:"endTime"`
+}
+
+// StatSeries represents a single stats time-series
+type StatSeries struct {
+	StatSeriesKey
+	Values []*StatPoint `json:"values"`
+}

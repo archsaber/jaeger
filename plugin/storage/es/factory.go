@@ -27,6 +27,7 @@ import (
 	esSpanStore "github.com/jaegertracing/jaeger/plugin/storage/es/spanstore"
 	"github.com/jaegertracing/jaeger/storage/dependencystore"
 	"github.com/jaegertracing/jaeger/storage/spanstore"
+	"github.com/jaegertracing/jaeger/storage/statstore"
 )
 
 // Factory implements storage.Factory for Elasticsearch backend.
@@ -86,4 +87,9 @@ func (f *Factory) CreateSpanWriter() (spanstore.Writer, error) {
 // CreateDependencyReader implements storage.Factory
 func (f *Factory) CreateDependencyReader() (dependencystore.Reader, error) {
 	return esDepStore.NewDependencyStore(f.primaryClient, f.logger), nil
+}
+
+// CreateStatReader implements storage.Factory
+func (f *Factory) CreateStatReader() (statstore.Reader, error) {
+	return nil, nil
 }

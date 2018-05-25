@@ -20,6 +20,7 @@ import (
 
 	"github.com/jaegertracing/jaeger/storage/dependencystore"
 	"github.com/jaegertracing/jaeger/storage/spanstore"
+	"github.com/jaegertracing/jaeger/storage/statstore"
 )
 
 // Factory implements storage.Factory and creates storage components backed by memory store.
@@ -54,4 +55,9 @@ func (f *Factory) CreateSpanWriter() (spanstore.Writer, error) {
 // CreateDependencyReader implements storage.Factory
 func (f *Factory) CreateDependencyReader() (dependencystore.Reader, error) {
 	return f.store, nil
+}
+
+// CreateStatReader implements storage.Factory
+func (f *Factory) CreateStatReader() (statstore.Reader, error) {
+	return nil, nil
 }

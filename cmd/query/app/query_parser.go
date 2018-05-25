@@ -40,6 +40,8 @@ const (
 	maxDurationParam = "maxDuration"
 	serviceParam     = "service"
 	endTimeParam     = "end"
+	envParam         = "env"
+	measureParam     = "measure"
 	prettyPrintParam = "prettyPrint"
 )
 
@@ -53,13 +55,34 @@ var (
 
 // queryParser handles the parsing of query parameters for traces
 type queryParser struct {
-	traceQueryLookbackDuration time.Duration
-	timeNow                    func() time.Time
+	lookBackDuration time.Duration
+	timeNow          func() time.Time
 }
 
 type traceQueryParameters struct {
 	spanstore.TraceQueryParameters
 	traceIDs []model.TraceID
+}
+
+func (p *queryParser) parseStatQuery(r *http.Request) (*model.StatSeriesKey, error) {
+	startTime, err := p.parseTime(startTimeParam, r)
+	if err != nil {
+		return nil, err
+	}
+	endTime, err := p.parseTime(endTimeParam, r)
+	if err != nil {
+		return nil, err
+	}
+
+	return &model.StatSeriesKey{
+		DomainID:      domainIDFromRequest(r),
+		Environment:   r.FormValue(envParam),
+		ServiceName:   r.FormValue(serviceParam),
+		OperationName: r.FormValue(operationParam),
+		Measure:       r.FormValue(measureParam),
+		StartTime:     startTime,
+		EndTime:       endTime,
+	}, nil
 }
 
 // parse takes a request and constructs a model of parameters
@@ -154,7 +177,7 @@ func (p *queryParser) parseTime(param string, r *http.Request) (time.Time, error
 	value := r.FormValue(param)
 	if value == "" {
 		if param == startTimeParam {
-			return p.timeNow().Add(-1 * p.traceQueryLookbackDuration), nil
+			return p.timeNow().Add(-1 * p.lookBackDuration), nil
 		}
 		return p.timeNow(), nil
 	}

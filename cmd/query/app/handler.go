@@ -40,6 +40,7 @@ import (
 	"github.com/jaegertracing/jaeger/pkg/multierror"
 	"github.com/jaegertracing/jaeger/storage/dependencystore"
 	"github.com/jaegertracing/jaeger/storage/spanstore"
+	"github.com/jaegertracing/jaeger/storage/statstore"
 )
 
 const (
@@ -49,6 +50,7 @@ const (
 
 	defaultDependencyLookbackDuration = time.Hour * 24
 	defaultTraceQueryLookbackDuration = time.Hour * 24 * 2
+	defaultStatQueryLookbackDuration  = time.Minute * 30
 	defaultAPIPrefix                  = "api"
 )
 
@@ -90,22 +92,30 @@ type APIHandler struct {
 	archiveSpanReader spanstore.Reader
 	archiveSpanWriter spanstore.Writer
 	dependencyReader  dependencystore.Reader
+	statReader        statstore.Reader
 	adjuster          adjuster.Adjuster
 	logger            *zap.Logger
 	queryParser       queryParser
+	statQueryParser   queryParser
 	basePath          string
 	apiPrefix         string
 	tracer            opentracing.Tracer
 }
 
 // NewAPIHandler returns an APIHandler
-func NewAPIHandler(spanReader spanstore.Reader, dependencyReader dependencystore.Reader, options ...HandlerOption) *APIHandler {
+func NewAPIHandler(spanReader spanstore.Reader, dependencyReader dependencystore.Reader,
+	statReader statstore.Reader, options ...HandlerOption) *APIHandler {
 	aH := &APIHandler{
 		spanReader:       spanReader,
 		dependencyReader: dependencyReader,
+		statReader:       statReader,
 		queryParser: queryParser{
-			traceQueryLookbackDuration: defaultTraceQueryLookbackDuration,
-			timeNow:                    time.Now,
+			lookBackDuration: defaultTraceQueryLookbackDuration,
+			timeNow:          time.Now,
+		},
+		statQueryParser: queryParser{
+			lookBackDuration: defaultStatQueryLookbackDuration,
+			timeNow:          time.Now,
 		},
 	}
 
@@ -138,6 +148,7 @@ func (aH *APIHandler) RegisterRoutes(router *mux.Router) {
 	// TODO - remove this when UI catches up
 	aH.handleFunc(router, aH.getOperationsLegacy, "/services/{%s}/operations", serviceParam).Methods(http.MethodGet)
 	aH.handleFunc(router, aH.dependencies, "/dependencies").Methods(http.MethodGet)
+	aH.handleFunc(router, aH.getStats, "/stats").Methods(http.MethodGet)
 }
 
 func (aH *APIHandler) handleFunc(
@@ -236,6 +247,42 @@ func (aH *APIHandler) getOperations(w http.ResponseWriter, r *http.Request) {
 		Total: len(operations),
 	}
 	aH.writeJSON(w, r, &structuredRes)
+}
+
+func (aH *APIHandler) getStats(w http.ResponseWriter, r *http.Request) {
+	sQuery, err := aH.statQueryParser.parseStatQuery(r)
+	if aH.handleError(w, err, http.StatusBadRequest) {
+		return
+	}
+	stats, err := aH.statReader.GetStats(sQuery)
+	if aH.handleError(w, err, http.StatusInternalServerError) {
+		return
+	}
+	uiStats := make([]*ui.StatSeries, 0, len(stats))
+	for _, stat := range stats {
+		uiValues := make([]*ui.StatPoint, 0, len(stat.Values))
+		for _, value := range stat.Values {
+			uiValues = append(uiValues, &ui.StatPoint{
+				Timestamp: value.Timestamp,
+				Value:     value.Value,
+			})
+		}
+		uiStats = append(uiStats, &ui.StatSeries{
+			StatSeriesKey: ui.StatSeriesKey{
+				DomainID:      stat.DomainID.String(),
+				Environment:   stat.Environment,
+				ServiceName:   stat.ServiceName,
+				OperationName: stat.OperationName,
+				Measure:       stat.Measure,
+				StartTime:     int64(model.TimeAsEpochMicroseconds(stat.StartTime)),
+				EndTime:       int64(model.TimeAsEpochMicroseconds(stat.EndTime)),
+			},
+			Values: uiValues,
+		})
+	}
+	aH.writeJSON(w, r, &structuredResponse{
+		Data: uiStats,
+	})
 }
 
 func (aH *APIHandler) search(w http.ResponseWriter, r *http.Request) {

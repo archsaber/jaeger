@@ -64,7 +64,7 @@ func (handlerOptions) Prefix(prefix string) HandlerOption {
 // QueryLookbackDuration creates a HandlerOption that initializes lookback duration
 func (handlerOptions) QueryLookbackDuration(queryLookbackDuration time.Duration) HandlerOption {
 	return func(apiHandler *APIHandler) {
-		apiHandler.queryParser.traceQueryLookbackDuration = queryLookbackDuration
+		apiHandler.queryParser.lookBackDuration = queryLookbackDuration
 	}
 }
 
