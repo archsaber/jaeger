@@ -56,7 +56,8 @@ func (s *StatReader) GetStats(key *model.StatSeriesKey) ([]*model.StatSeries, er
 	}
 	measures := []string{}
 	if key.Measure == "" {
-		measures = append(measures, model.HITS, model.DURATION, model.ERRORS)
+		measures = append(measures, model.HITS, model.DURATION, model.ERRORS,
+			model.DURATION_BY_SERVICE, model.DURATION_BY_TYPE)
 	} else {
 		measures = []string{key.Measure}
 	}
@@ -79,7 +80,7 @@ func (s *StatReader) GetStats(key *model.StatSeriesKey) ([]*model.StatSeries, er
 
 		var values []*model.StatPoint
 		var timeStamp int64
-		var value float64
+		var value map[string]float64
 		for i.Scan(&timeStamp, &value) {
 			values = append(values, &model.StatPoint{
 				Timestamp: timeStamp,

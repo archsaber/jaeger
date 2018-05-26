@@ -14,6 +14,7 @@ type StatsPoint struct {
 	Start          int64
 	Duration       int64
 	Measure        string
+	Submeasure     string
 	Value          float64
 	DomainID       string
 	NodeUUID       string
@@ -34,7 +35,7 @@ func NewStatsPoint() *StatsPoint {
 }
 
 func (r *StatsPoint) Schema() string {
-	return "{\"fields\":[{\"name\":\"Start\",\"type\":\"long\"},{\"name\":\"Duration\",\"type\":\"long\"},{\"name\":\"Measure\",\"type\":\"string\"},{\"name\":\"Value\",\"type\":\"double\"},{\"name\":\"DomainID\",\"type\":\"string\"},{\"name\":\"NodeUUID\",\"type\":\"string\"},{\"name\":\"Service\",\"type\":\"string\"},{\"name\":\"Operation\",\"type\":\"string\"},{\"name\":\"Env\",\"type\":\"string\"},{\"name\":\"HTTPStatusCode\",\"type\":\"string\"}],\"name\":\"StatsPoint\",\"namespace\":\"ddstatsprocessor\",\"type\":\"record\"}"
+	return "{\"fields\":[{\"name\":\"Start\",\"type\":\"long\"},{\"name\":\"Duration\",\"type\":\"long\"},{\"name\":\"Measure\",\"type\":\"string\"},{\"name\":\"Submeasure\",\"type\":\"string\"},{\"name\":\"Value\",\"type\":\"double\"},{\"name\":\"DomainID\",\"type\":\"string\"},{\"name\":\"NodeUUID\",\"type\":\"string\"},{\"name\":\"Service\",\"type\":\"string\"},{\"name\":\"Operation\",\"type\":\"string\"},{\"name\":\"Env\",\"type\":\"string\"},{\"name\":\"HTTPStatusCode\",\"type\":\"string\"}],\"name\":\"StatsPoint\",\"namespace\":\"ddstatsprocessor\",\"type\":\"record\"}"
 }
 
 func (r *StatsPoint) Serialize(w io.Writer) error {

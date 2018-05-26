@@ -111,8 +111,8 @@ type DependencyLink struct {
 
 // StatPoint represents a single data point
 type StatPoint struct {
-	Timestamp int64   `json:"timestamp"`
-	Value     float64 `json:"value"`
+	Timestamp int64              `json:"timestamp"`
+	Value     map[string]float64 `json:"value"`
 }
 
 // StatSeriesKey is the primary key for a stats time-series

@@ -69,7 +69,7 @@ CREATE TABLE IF NOT EXISTS ${keyspace}.traces (
 )
     WITH compaction = {
         'compaction_window_size': '1', 
-        'compaction_window_unit': 'HOURS', 
+        'compaction_window_unit': 'DAYS', 
         'class': 'org.apache.cassandra.db.compaction.TimeWindowCompactionStrategy'
     }
     AND dclocal_read_repair_chance = 0.0
@@ -119,7 +119,7 @@ CREATE TABLE IF NOT EXISTS ${keyspace}.service_operation_index (
 ) WITH CLUSTERING ORDER BY (start_time DESC)
     AND compaction = {
         'compaction_window_size': '1', 
-        'compaction_window_unit': 'HOURS', 
+        'compaction_window_unit': 'DAYS', 
         'class': 'org.apache.cassandra.db.compaction.TimeWindowCompactionStrategy'
     }
     AND dclocal_read_repair_chance = 0.0
@@ -137,7 +137,7 @@ CREATE TABLE IF NOT EXISTS ${keyspace}.service_name_index (
 ) WITH CLUSTERING ORDER BY (start_time DESC)
     AND compaction = {
         'compaction_window_size': '1', 
-        'compaction_window_unit': 'HOURS', 
+        'compaction_window_unit': 'DAYS', 
         'class': 'org.apache.cassandra.db.compaction.TimeWindowCompactionStrategy'
     }
     AND dclocal_read_repair_chance = 0.0
@@ -157,7 +157,7 @@ CREATE TABLE IF NOT EXISTS ${keyspace}.duration_index (
 ) WITH CLUSTERING ORDER BY (duration DESC, start_time DESC)
     AND compaction = {
         'compaction_window_size': '1', 
-        'compaction_window_unit': 'HOURS', 
+        'compaction_window_unit': 'DAYS', 
         'class': 'org.apache.cassandra.db.compaction.TimeWindowCompactionStrategy'
     }
     AND dclocal_read_repair_chance = 0.0
@@ -180,7 +180,7 @@ CREATE TABLE IF NOT EXISTS ${keyspace}.tag_index (
     WITH CLUSTERING ORDER BY (start_time DESC)
     AND compaction = {
         'compaction_window_size': '1', 
-        'compaction_window_unit': 'HOURS', 
+        'compaction_window_unit': 'DAYS', 
         'class': 'org.apache.cassandra.db.compaction.TimeWindowCompactionStrategy'
     }
     AND dclocal_read_repair_chance = 0.0
@@ -194,12 +194,12 @@ CREATE TABLE IF NOT EXISTS ${keyspace}.service_stats (
     service_name        text,
     measure             text,
     time_stamp          bigint,
-    value               double,
+    value               frozen<map<text, double>>,
     PRIMARY KEY ((domain_id, env, service_name, measure), time_stamp)
 ) WITH CLUSTERING ORDER BY (time_stamp ASC)
     AND compaction = {
         'compaction_window_size': '1', 
-        'compaction_window_unit': 'HOURS', 
+        'compaction_window_unit': 'DAYS', 
         'class': 'org.apache.cassandra.db.compaction.TimeWindowCompactionStrategy'
     }
     AND dclocal_read_repair_chance = 0.0
@@ -214,12 +214,12 @@ CREATE TABLE IF NOT EXISTS ${keyspace}.operation_stats (
     operation_name      text,
     measure             text,
     time_stamp          bigint,
-    value               double,
+    value               frozen<map<text, double>>,
     PRIMARY KEY ((domain_id, env, service_name, operation_name, measure), time_stamp)
 ) WITH CLUSTERING ORDER BY (time_stamp ASC)
     AND compaction = {
         'compaction_window_size': '1', 
-        'compaction_window_unit': 'HOURS', 
+        'compaction_window_unit': 'DAYS', 
         'class': 'org.apache.cassandra.db.compaction.TimeWindowCompactionStrategy'
     }
     AND dclocal_read_repair_chance = 0.0

@@ -33,6 +33,7 @@ import (
 	"github.com/gogo/protobuf/proto"
 	"github.com/gorilla/mux"
 	avroKafka "github.com/jaegertracing/jaeger/avro-gen/kafka"
+	jModel "github.com/jaegertracing/jaeger/model"
 	"github.com/jaegertracing/jaeger/pkg/jwt"
 	tJaeger "github.com/jaegertracing/jaeger/thrift-gen/jaeger"
 	goKafka "github.com/segmentio/kafka-go"
@@ -183,27 +184,31 @@ func (aH *APIHandler) handleDDStats(w http.ResponseWriter, r *http.Request) {
 	var rawMessage bytes.Buffer
 	for _, statBucket := range statsPayload.Stats {
 		for _, count := range statBucket.Counts {
-			var service, resource, env, httpstatuscode string
-			for _, tag := range count.TagSet {
-				switch tag.Name {
-				case "service":
-					service = tag.Value
-				case "resource":
-					resource = tag.Value
-				case "env":
-					env = tag.Value
-				case "http.status_code":
-					httpstatuscode = tag.Value
-				}
+			measure := count.Measure
+			service := count.TagSet.Get("service").Value
+			resource := count.TagSet.Get("resource").Value
+			env := count.TagSet.Get("env").Value
+			httpstatuscode := count.TagSet.Get("http.status_code").Value
+			sublayerService := count.TagSet.Get("sublayer_service").Value
+			sublayerType := count.TagSet.Get("sublayer_type").Value
+			submeasure := measure
+			if measure == "_sublayers.duration.by_service" {
+				measure = jModel.DURATION_BY_SERVICE
+				submeasure = sublayerService
+			} else if measure == "_sublayers.duration.by_type" {
+				measure = jModel.DURATION_BY_TYPE
+				submeasure = sublayerType
 			}
+
 			avro := &avroKafka.StatsPoint{
-				Start:    statBucket.Start,
-				Duration: statBucket.Duration,
-				Measure:  count.Measure,
-				Value:    count.Value,
-				DomainID: domainid,
-				NodeUUID: nodeuuid,
-				Service:  service,
+				Start:      statBucket.Start,
+				Duration:   statBucket.Duration,
+				Measure:    measure,
+				Submeasure: submeasure,
+				Value:      count.Value,
+				DomainID:   domainid,
+				NodeUUID:   nodeuuid,
+				Service:    service,
 				// Stats are sent only for top level spans
 				Operation:      getJaegerOperationName(count.Name, resource, true),
 				Env:            env,

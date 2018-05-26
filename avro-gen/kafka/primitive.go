@@ -138,6 +138,10 @@ func readStatsPoint(r io.Reader) (*StatsPoint, error) {
 	if err != nil {
 		return nil, err
 	}
+	str.Submeasure, err = readString(r)
+	if err != nil {
+		return nil, err
+	}
 	str.Value, err = readDouble(r)
 	if err != nil {
 		return nil, err
@@ -214,6 +218,10 @@ func writeStatsPoint(r *StatsPoint, w io.Writer) error {
 		return err
 	}
 	err = writeString(r.Measure, w)
+	if err != nil {
+		return err
+	}
+	err = writeString(r.Submeasure, w)
 	if err != nil {
 		return err
 	}

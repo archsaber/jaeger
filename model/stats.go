@@ -8,15 +8,17 @@ import (
 
 // Different kinds of stats (measures) that are stored
 const (
-	HITS     = "hits"
-	ERRORS   = "errors"
-	DURATION = "duration"
+	HITS                = "hits"
+	ERRORS              = "errors"
+	DURATION            = "duration"
+	DURATION_BY_SERVICE = "duration.by_service"
+	DURATION_BY_TYPE    = "duration.by_type"
 )
 
 // StatPoint represents a single data point
 type StatPoint struct {
-	Timestamp int64   `json:"timestamp"`
-	Value     float64 `json:"value"`
+	Timestamp int64              `json:"timestamp"`
+	Value     map[string]float64 `json:"value"`
 }
 
 // StatSeriesKey is the primary key for a stats time-series
