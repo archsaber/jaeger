@@ -15,9 +15,11 @@
 package app
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"net/http"
 	"net/url"
 	"os"
@@ -32,6 +34,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/gocql/gocql"
+	"github.com/jaegertracing/jaeger/avro-gen/alertrule"
 	"github.com/jaegertracing/jaeger/model"
 	"github.com/jaegertracing/jaeger/model/adjuster"
 	uiconv "github.com/jaegertracing/jaeger/model/converter/json"
@@ -41,6 +44,7 @@ import (
 	"github.com/jaegertracing/jaeger/storage/dependencystore"
 	"github.com/jaegertracing/jaeger/storage/spanstore"
 	"github.com/jaegertracing/jaeger/storage/statstore"
+	goKafka "github.com/segmentio/kafka-go"
 )
 
 const (
@@ -100,6 +104,7 @@ type APIHandler struct {
 	basePath          string
 	apiPrefix         string
 	tracer            opentracing.Tracer
+	alertsProducer    *goKafka.Writer
 }
 
 // NewAPIHandler returns an APIHandler
@@ -117,6 +122,12 @@ func NewAPIHandler(spanReader spanstore.Reader, dependencyReader dependencystore
 			lookBackDuration: defaultStatQueryLookbackDuration,
 			timeNow:          time.Now,
 		},
+		alertsProducer: goKafka.NewWriter(
+			goKafka.WriterConfig{
+				Brokers: []string{"bootstrap.kafka:9092"},
+				Topic:   "alertrules",
+			},
+		),
 	}
 
 	for _, option := range options {
@@ -149,6 +160,7 @@ func (aH *APIHandler) RegisterRoutes(router *mux.Router) {
 	aH.handleFunc(router, aH.getOperationsLegacy, "/services/{%s}/operations", serviceParam).Methods(http.MethodGet)
 	aH.handleFunc(router, aH.dependencies, "/dependencies").Methods(http.MethodGet)
 	aH.handleFunc(router, aH.getStats, "/stats").Methods(http.MethodGet)
+	aH.handleFunc(router, aH.setAlert, "/setalert").Methods(http.MethodPost)
 }
 
 func (aH *APIHandler) handleFunc(
@@ -202,6 +214,45 @@ func (aH *APIHandler) handleFunc(
 func (aH *APIHandler) route(route string, args ...interface{}) string {
 	args = append([]interface{}{aH.apiPrefix}, args...)
 	return fmt.Sprintf("/%s"+route, args...)
+}
+
+func (aH *APIHandler) setAlert(w http.ResponseWriter, r *http.Request) {
+	rBody, err := ioutil.ReadAll(r.Body)
+	if err != nil {
+		aH.handleError(w, err, http.StatusInternalServerError)
+		return
+	}
+	var rule alertrule.AlertRule
+	err = json.Unmarshal(rBody, &rule)
+	if err != nil {
+		aH.handleError(w, err, http.StatusInternalServerError)
+		return
+	}
+	rule.DomainID = domainIDFromRequest(r).String()
+	if rule.Env == "" {
+		rule.Env = "none"
+	}
+	rule.CreationTime = time.Now().Unix()
+
+	// validate input
+	if rule.DomainID == "" || rule.Env == "" || rule.Service == "" || rule.Measure == "" ||
+		rule.Submeasure == "" || rule.Upperlimit <= 0 || rule.Duration <= 0 {
+		aH.handleError(w, errors.New("Invalid alert rule"), http.StatusBadRequest)
+		return
+	}
+	var rawMessage bytes.Buffer
+	err = rule.Serialize(&rawMessage)
+	// err = json.NewEncoder(&rawMessage).Encode(rule)
+	if err != nil {
+		aH.handleError(w, err, http.StatusInternalServerError)
+		return
+	}
+	aH.alertsProducer.WriteMessages(context.Background(), goKafka.Message{
+		Key:   []byte(rule.DomainID),
+		Value: rawMessage.Bytes(),
+		Time:  time.Unix(rule.CreationTime, 0),
+	})
+	return
 }
 
 func (aH *APIHandler) getServices(w http.ResponseWriter, r *http.Request) {

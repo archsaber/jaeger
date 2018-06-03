@@ -214,14 +214,17 @@ func (aH *APIHandler) handleDDStats(w http.ResponseWriter, r *http.Request) {
 				Env:            env,
 				HTTPStatusCode: httpstatuscode,
 			}
+
 			rawMessage.Reset()
-			err := json.NewEncoder(&rawMessage).Encode(avro)
-			if err != nil {
-				continue
-			}
+			avro.Serialize(&rawMessage)
+
+			in := rawMessage.Bytes()
+			out := make([]byte, len(in))
+			copy(out, in)
+
 			kafkaMessages = append(kafkaMessages, goKafka.Message{
 				Key:   []byte(avro.DomainID),
-				Value: rawMessage.Bytes(),
+				Value: out,
 				Time:  time.Unix(0, avro.Start+avro.Duration),
 			})
 		}
