@@ -13,6 +13,10 @@ import (
 	"math"
 )
 
+type ByteReader interface {
+	ReadByte() (byte, error)
+}
+
 type ByteWriter interface {
 	Grow(int)
 	WriteByte(byte) error
@@ -126,7 +130,11 @@ func readAlertRule(r io.Reader) (*AlertRule, error) {
 	if err != nil {
 		return nil, err
 	}
-	str.Upperlimit, err = readDouble(r)
+	str.Limit, err = readDouble(r)
+	if err != nil {
+		return nil, err
+	}
+	str.Upper, err = readBool(r)
 	if err != nil {
 		return nil, err
 	}
@@ -134,8 +142,36 @@ func readAlertRule(r io.Reader) (*AlertRule, error) {
 	if err != nil {
 		return nil, err
 	}
+	str.Type, err = readString(r)
+	if err != nil {
+		return nil, err
+	}
+	str.Function, err = readString(r)
+	if err != nil {
+		return nil, err
+	}
+	str.Disabled, err = readBool(r)
+	if err != nil {
+		return nil, err
+	}
 
 	return str, nil
+}
+
+func readBool(r io.Reader) (bool, error) {
+	var b byte
+	var err error
+	if br, ok := r.(ByteReader); ok {
+		b, err = br.ReadByte()
+	} else {
+		bs := make([]byte, 1)
+		_, err = io.ReadFull(r, bs)
+		if err != nil {
+			return false, err
+		}
+		b = bs[0]
+	}
+	return b == 1, nil
 }
 
 func readDouble(r io.Reader) (float64, error) {
@@ -216,7 +252,11 @@ func writeAlertRule(r *AlertRule, w io.Writer) error {
 	if err != nil {
 		return err
 	}
-	err = writeDouble(r.Upperlimit, w)
+	err = writeDouble(r.Limit, w)
+	if err != nil {
+		return err
+	}
+	err = writeBool(r.Upper, w)
 	if err != nil {
 		return err
 	}
@@ -224,7 +264,39 @@ func writeAlertRule(r *AlertRule, w io.Writer) error {
 	if err != nil {
 		return err
 	}
+	err = writeString(r.Type, w)
+	if err != nil {
+		return err
+	}
+	err = writeString(r.Function, w)
+	if err != nil {
+		return err
+	}
+	err = writeBool(r.Disabled, w)
+	if err != nil {
+		return err
+	}
 
+	return nil
+}
+
+func writeBool(r bool, w io.Writer) error {
+	var b byte
+	if r {
+		b = byte(1)
+	}
+
+	var err error
+	if bw, ok := w.(ByteWriter); ok {
+		err = bw.WriteByte(b)
+	} else {
+		bb := make([]byte, 1)
+		bb[0] = b
+		_, err = w.Write(bb)
+	}
+	if err != nil {
+		return err
+	}
 	return nil
 }
 

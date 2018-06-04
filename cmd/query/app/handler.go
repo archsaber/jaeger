@@ -236,7 +236,8 @@ func (aH *APIHandler) setAlert(w http.ResponseWriter, r *http.Request) {
 
 	// validate input
 	if rule.DomainID == "" || rule.Env == "" || rule.Service == "" || rule.Measure == "" ||
-		rule.Submeasure == "" || rule.Upperlimit <= 0 || rule.Duration <= 0 {
+		rule.Submeasure == "" || rule.Limit <= 0 || rule.Duration <= 0 || rule.Function == "" ||
+		rule.Type == "" {
 		aH.handleError(w, errors.New("Invalid alert rule"), http.StatusBadRequest)
 		return
 	}

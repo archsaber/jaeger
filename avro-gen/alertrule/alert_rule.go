@@ -18,8 +18,12 @@ type AlertRule struct {
 	Duration     int64
 	Measure      string
 	Submeasure   string
-	Upperlimit   float64
+	Limit        float64
+	Upper        bool
 	CreationTime int64
+	Type         string
+	Function     string
+	Disabled     bool
 }
 
 func DeserializeAlertRule(r io.Reader) (*AlertRule, error) {
@@ -34,7 +38,7 @@ func NewAlertRule() *AlertRule {
 }
 
 func (r *AlertRule) Schema() string {
-	return "{\"fields\":[{\"name\":\"DomainID\",\"type\":\"string\"},{\"name\":\"Service\",\"type\":\"string\"},{\"name\":\"Operation\",\"type\":\"string\"},{\"default\":\"none\",\"name\":\"Env\",\"type\":\"string\"},{\"name\":\"Duration\",\"type\":\"long\"},{\"name\":\"Measure\",\"type\":\"string\"},{\"name\":\"Submeasure\",\"type\":\"string\"},{\"name\":\"Upperlimit\",\"type\":\"double\"},{\"name\":\"CreationTime\",\"type\":\"long\"}],\"name\":\"AlertRule\",\"namespace\":\"ddstatsprocessor.alerts\",\"type\":\"record\"}"
+	return "{\"fields\":[{\"name\":\"DomainID\",\"type\":\"string\"},{\"name\":\"Service\",\"type\":\"string\"},{\"name\":\"Operation\",\"type\":\"string\"},{\"default\":\"none\",\"name\":\"Env\",\"type\":\"string\"},{\"name\":\"Duration\",\"type\":\"long\"},{\"name\":\"Measure\",\"type\":\"string\"},{\"name\":\"Submeasure\",\"type\":\"string\"},{\"name\":\"Limit\",\"type\":\"double\"},{\"name\":\"Upper\",\"type\":\"boolean\"},{\"name\":\"CreationTime\",\"type\":\"long\"},{\"name\":\"Type\",\"type\":\"string\"},{\"name\":\"Function\",\"type\":\"string\"},{\"name\":\"Disabled\",\"type\":\"boolean\"}],\"name\":\"AlertRule\",\"namespace\":\"ddstatsprocessor.alerts\",\"type\":\"record\"}"
 }
 
 func (r *AlertRule) Serialize(w io.Writer) error {
