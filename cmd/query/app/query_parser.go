@@ -31,18 +31,19 @@ import (
 const (
 	defaultQueryLimit = 100
 
-	operationParam   = "operation"
-	tagParam         = "tag"
-	tagsParam        = "tags"
-	startTimeParam   = "start"
-	limitParam       = "limit"
-	minDurationParam = "minDuration"
-	maxDurationParam = "maxDuration"
-	serviceParam     = "service"
-	endTimeParam     = "end"
-	envParam         = "env"
-	measureParam     = "measure"
-	prettyPrintParam = "prettyPrint"
+	operationParam     = "operation"
+	tagParam           = "tag"
+	tagsParam          = "tags"
+	startTimeParam     = "start"
+	limitParam         = "limit"
+	minDurationParam   = "minDuration"
+	maxDurationParam   = "maxDuration"
+	serviceParam       = "service"
+	endTimeParam       = "end"
+	envParam           = "env"
+	measureParam       = "measure"
+	prettyPrintParam   = "prettyPrint"
+	allOperationsParam = "allOperations"
 )
 
 var (

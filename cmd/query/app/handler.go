@@ -56,6 +56,9 @@ const (
 	defaultTraceQueryLookbackDuration = time.Hour * 24 * 2
 	defaultStatQueryLookbackDuration  = time.Minute * 30
 	defaultAPIPrefix                  = "api"
+
+	// milliseconds
+	minAlertRuleDuration = 10 * 1000
 )
 
 var (
@@ -160,7 +163,8 @@ func (aH *APIHandler) RegisterRoutes(router *mux.Router) {
 	aH.handleFunc(router, aH.getOperationsLegacy, "/services/{%s}/operations", serviceParam).Methods(http.MethodGet)
 	aH.handleFunc(router, aH.dependencies, "/dependencies").Methods(http.MethodGet)
 	aH.handleFunc(router, aH.getStats, "/stats").Methods(http.MethodGet)
-	aH.handleFunc(router, aH.setAlert, "/setalert").Methods(http.MethodPost)
+	aH.handleFunc(router, aH.getAlertRules, "/getalertrules").Methods(http.MethodGet)
+	aH.handleFunc(router, aH.setAlertRule, "/setalertrule").Methods(http.MethodPost)
 }
 
 func (aH *APIHandler) handleFunc(
@@ -216,7 +220,7 @@ func (aH *APIHandler) route(route string, args ...interface{}) string {
 	return fmt.Sprintf("/%s"+route, args...)
 }
 
-func (aH *APIHandler) setAlert(w http.ResponseWriter, r *http.Request) {
+func (aH *APIHandler) setAlertRule(w http.ResponseWriter, r *http.Request) {
 	rBody, err := ioutil.ReadAll(r.Body)
 	if err != nil {
 		aH.handleError(w, err, http.StatusInternalServerError)
@@ -236,14 +240,13 @@ func (aH *APIHandler) setAlert(w http.ResponseWriter, r *http.Request) {
 
 	// validate input
 	if rule.DomainID == "" || rule.Env == "" || rule.Service == "" || rule.Measure == "" ||
-		rule.Submeasure == "" || rule.Limit <= 0 || rule.Duration <= 0 || rule.Function == "" ||
-		rule.Type == "" {
+		rule.Submeasure == "" || rule.Limit <= 0 || rule.Duration < minAlertRuleDuration ||
+		rule.Function == "" || rule.Type == "" {
 		aH.handleError(w, errors.New("Invalid alert rule"), http.StatusBadRequest)
 		return
 	}
 	var rawMessage bytes.Buffer
 	err = rule.Serialize(&rawMessage)
-	// err = json.NewEncoder(&rawMessage).Encode(rule)
 	if err != nil {
 		aH.handleError(w, err, http.StatusInternalServerError)
 		return
@@ -253,7 +256,53 @@ func (aH *APIHandler) setAlert(w http.ResponseWriter, r *http.Request) {
 		Value: rawMessage.Bytes(),
 		Time:  time.Unix(rule.CreationTime, 0),
 	})
+
+	aH.writeJSON(w, r, &structuredResponse{
+		Data: "ok",
+	})
 	return
+}
+
+func (aH *APIHandler) getAlertRules(w http.ResponseWriter, r *http.Request) {
+	allOperations := r.FormValue(allOperationsParam)
+	isAllOperations := false
+	if allOperations == "y" {
+		isAllOperations = true
+	}
+	rules, err := aH.statReader.GetAlertRules(&model.AlertRuleQueryParams{
+		AlertRuleGroupKey: model.AlertRuleGroupKey{
+			DomainID:      domainIDFromRequest(r),
+			Environment:   r.FormValue(envParam),
+			ServiceName:   r.FormValue(serviceParam),
+			OperationName: r.FormValue(operationParam),
+		},
+		AllOperations: isAllOperations,
+	})
+	if err != nil {
+		aH.handleError(w, err, http.StatusInternalServerError)
+		return
+	}
+	uiRules := make([]*alertrule.AlertRule, 0, len(rules))
+	for _, rule := range rules {
+		uiRules = append(uiRules, &alertrule.AlertRule{
+			DomainID:     rule.DomainID.String(),
+			Env:          rule.Environment,
+			Service:      rule.ServiceName,
+			Operation:    rule.OperationName,
+			Measure:      rule.Measure,
+			Submeasure:   rule.Submeasure,
+			CreationTime: int64(model.TimeAsEpochMicroseconds(rule.CreationTime)),
+			Duration:     int64(model.DurationAsMicroseconds(rule.Duration)),
+			Disabled:     rule.Disabled,
+			Limit:        rule.Threshold,
+			Upper:        rule.Upper,
+			Type:         rule.Type,
+			Function:     rule.Function,
+		})
+	}
+	aH.writeJSON(w, r, &structuredResponse{
+		Data: uiRules,
+	})
 }
 
 func (aH *APIHandler) getServices(w http.ResponseWriter, r *http.Request) {
