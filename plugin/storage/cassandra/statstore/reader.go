@@ -96,7 +96,7 @@ func (s *StatReader) GetAlerts(params *model.AlertsQueryParams) ([]*model.Alert,
 
 		var closeTime time.Time
 		if endTime > 0 {
-			closeTime = model.EpochMicrosecondsAsTime(uint64(startTime))
+			closeTime = model.EpochMicrosecondsAsTime(uint64(endTime))
 		}
 
 		alerts = append(alerts, &model.Alert{
