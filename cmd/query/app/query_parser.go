@@ -65,6 +65,29 @@ type traceQueryParameters struct {
 	traceIDs []model.TraceID
 }
 
+func (p *queryParser) parseAlertsQuery(r *http.Request) (*model.AlertsQueryParams, error) {
+	startTime, err := p.parseTime(startTimeParam, r)
+	if err != nil {
+		return nil, err
+	}
+	endTime, err := p.parseTime(endTimeParam, r)
+	if err != nil {
+		return nil, err
+	}
+
+	return &model.AlertsQueryParams{
+		AlertGroupKey: model.AlertGroupKey{
+			DomainID:      domainIDFromRequest(r),
+			Environment:   r.FormValue(envParam),
+			ServiceName:   r.FormValue(serviceParam),
+			OperationName: r.FormValue(operationParam),
+		},
+		AllOperations: r.FormValue(allOperationsParam) == "y",
+		Start:         startTime,
+		End:           endTime,
+	}, nil
+}
+
 func (p *queryParser) parseStatQuery(r *http.Request) (*model.StatSeriesKey, error) {
 	startTime, err := p.parseTime(startTimeParam, r)
 	if err != nil {

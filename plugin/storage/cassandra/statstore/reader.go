@@ -2,6 +2,7 @@ package statstore
 
 import (
 	"errors"
+	"time"
 
 	"github.com/jaegertracing/jaeger/model"
 	"github.com/jaegertracing/jaeger/pkg/cassandra"
@@ -25,6 +26,10 @@ const (
 		SELECT operation_name, measure, submeasure, creation_time, disabled, duration, function, threshold, type, upper
 		FROM alert_rules
 		WHERE domain_id = ? AND env = ? AND service_name = ?`
+	alertsQuery = `
+		SELECT operation_name, measure, submeasure, start_time, end_time, actual_value, threshold, type, function, upper, duration
+		FROM alerts
+		WHERE domain_id = ? AND env = ? AND service_name = ? AND start_time >= ? AND start_time <= ?`
 )
 
 var (
@@ -39,6 +44,9 @@ var (
 
 	// ErrStartAndEndTimeNotSet occurs when start time and end time are not set
 	ErrStartAndEndTimeNotSet = errors.New("Start and End Time must be set")
+
+	// ErrStartTimeMinGreaterThanMax occurs when start time min is above start time max
+	ErrStartTimeMinGreaterThanMax = errors.New("Start Time Minimum is above Maximum")
 )
 
 // StatReader is a reader for stats
@@ -55,6 +63,58 @@ func NewStatReader(session cassandra.Session, logger *zap.Logger) *StatReader {
 		consistency: cassandra.One,
 		logger:      logger,
 	}
+}
+
+func (s *StatReader) GetAlerts(params *model.AlertsQueryParams) ([]*model.Alert, error) {
+	if err := validateAlertsQueryParams(params); err != nil {
+		return nil, err
+	}
+
+	var q cassandra.Query
+	q = s.session.Query(alertsQuery, params.DomainID, params.Environment, params.ServiceName,
+		model.TimeAsEpochMicroseconds(params.Start),
+		model.TimeAsEpochMicroseconds(params.End))
+
+	i := q.Consistency(s.consistency).Iter()
+
+	var operation, measure, submeasure, function, alertType string
+	var actualValue, threshold float64
+	var upper bool
+	var startTime, endTime, duration int64
+
+	alerts := make([]*model.Alert, 0)
+	for i.Scan(&operation, &measure, &submeasure, &startTime, &endTime, &actualValue, &threshold,
+		&alertType, &function, &upper, &duration) {
+
+		if (params.AllOperations && operation == "") ||
+			(!params.AllOperations && operation != params.OperationName) {
+			continue
+		}
+
+		groupKey := params.AlertGroupKey
+		groupKey.OperationName = operation
+
+		var closeTime time.Time
+		if endTime > 0 {
+			closeTime = model.EpochMicrosecondsAsTime(uint64(startTime))
+		}
+
+		alerts = append(alerts, &model.Alert{
+			AlertGroupKey: groupKey,
+			Measure:       measure,
+			Submeasure:    submeasure,
+			OpenTime:      model.EpochMicrosecondsAsTime(uint64(startTime)),
+			CloseTime:     closeTime,
+			ActualValue:   actualValue,
+			Limit:         threshold,
+			Upper:         upper,
+			Type:          alertType,
+			Function:      function,
+			Duration:      model.MicrosecondsAsDuration(uint64(duration)),
+		})
+	}
+
+	return alerts, nil
 }
 
 func (s *StatReader) GetAlertRules(params *model.AlertRuleQueryParams) ([]*model.AlertRule, error) {
@@ -168,6 +228,9 @@ func validateStatSeriesKey(k *model.StatSeriesKey) error {
 	if k.StartTime.IsZero() || k.EndTime.IsZero() {
 		return ErrStartAndEndTimeNotSet
 	}
+	if !k.StartTime.IsZero() && !k.EndTime.IsZero() && k.EndTime.Before(k.StartTime) {
+		return ErrStartTimeMinGreaterThanMax
+	}
 	return nil
 }
 
@@ -180,6 +243,25 @@ func validateAlertRuleQueryParams(k *model.AlertRuleQueryParams) error {
 	}
 	if k.ServiceName == "" {
 		return ErrServiceNameNotSet
+	}
+	return nil
+}
+
+func validateAlertsQueryParams(k *model.AlertsQueryParams) error {
+	if k == nil {
+		return ErrMalformedRequestObject
+	}
+	if k.Environment == "" {
+		return ErrEnvironmentNotSet
+	}
+	if k.ServiceName == "" {
+		return ErrServiceNameNotSet
+	}
+	if k.Start.IsZero() || k.End.IsZero() {
+		return ErrStartAndEndTimeNotSet
+	}
+	if !k.Start.IsZero() && !k.End.IsZero() && k.End.Before(k.Start) {
+		return ErrStartTimeMinGreaterThanMax
 	}
 	return nil
 }

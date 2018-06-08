@@ -52,10 +52,11 @@ const (
 	endTsParam    = "endTs"
 	lookbackParam = "lookback"
 
-	defaultDependencyLookbackDuration = time.Hour * 24
-	defaultTraceQueryLookbackDuration = time.Hour * 24 * 2
-	defaultStatQueryLookbackDuration  = time.Minute * 30
-	defaultAPIPrefix                  = "api"
+	defaultDependencyLookbackDuration  = time.Hour * 24
+	defaultTraceQueryLookbackDuration  = time.Hour * 24 * 2
+	defaultStatQueryLookbackDuration   = time.Minute * 30
+	defaultAlertsQueryLookbackDuration = time.Minute * 30
+	defaultAPIPrefix                   = "api"
 
 	// milliseconds
 	minAlertRuleDuration = 10 * 1000
@@ -104,6 +105,7 @@ type APIHandler struct {
 	logger            *zap.Logger
 	queryParser       queryParser
 	statQueryParser   queryParser
+	alertsQueryParser queryParser
 	basePath          string
 	apiPrefix         string
 	tracer            opentracing.Tracer
@@ -123,6 +125,10 @@ func NewAPIHandler(spanReader spanstore.Reader, dependencyReader dependencystore
 		},
 		statQueryParser: queryParser{
 			lookBackDuration: defaultStatQueryLookbackDuration,
+			timeNow:          time.Now,
+		},
+		alertsQueryParser: queryParser{
+			lookBackDuration: defaultAlertsQueryLookbackDuration,
 			timeNow:          time.Now,
 		},
 		alertsProducer: goKafka.NewWriter(
@@ -165,6 +171,7 @@ func (aH *APIHandler) RegisterRoutes(router *mux.Router) {
 	aH.handleFunc(router, aH.getStats, "/stats").Methods(http.MethodGet)
 	aH.handleFunc(router, aH.getAlertRules, "/getalertrules").Methods(http.MethodGet)
 	aH.handleFunc(router, aH.setAlertRule, "/setalertrule").Methods(http.MethodPost)
+	aH.handleFunc(router, aH.getAlerts, "/getalerts").Methods(http.MethodGet)
 }
 
 func (aH *APIHandler) handleFunc(
@@ -348,6 +355,40 @@ func (aH *APIHandler) getOperations(w http.ResponseWriter, r *http.Request) {
 		Total: len(operations),
 	}
 	aH.writeJSON(w, r, &structuredRes)
+}
+
+func (aH *APIHandler) getAlerts(w http.ResponseWriter, r *http.Request) {
+	aQuery, err := aH.alertsQueryParser.parseAlertsQuery(r)
+	if aH.handleError(w, err, http.StatusBadRequest) {
+		return
+	}
+
+	alerts, err := aH.statReader.GetAlerts(aQuery)
+	if aH.handleError(w, err, http.StatusInternalServerError) {
+		return
+	}
+	uiAlerts := make([]*ui.Alert, 0, len(alerts))
+	for _, alert := range alerts {
+		uiAlerts = append(uiAlerts, &ui.Alert{
+			DomainID:      alert.DomainID.String(),
+			Environment:   alert.Environment,
+			ServiceName:   alert.ServiceName,
+			OperationName: alert.OperationName,
+			Measure:       alert.Measure,
+			Submeasure:    alert.Submeasure,
+			OpenTime:      int64(model.TimeAsEpochMicroseconds(alert.OpenTime)),
+			CloseTime:     int64(model.TimeAsEpochMicroseconds(alert.CloseTime)),
+			Limit:         alert.Limit,
+			Duration:      int64(model.DurationAsMicroseconds(alert.Duration)),
+			ActualValue:   alert.ActualValue,
+			Type:          alert.Type,
+			Function:      alert.Function,
+			Upper:         alert.Upper,
+		})
+	}
+	aH.writeJSON(w, r, &structuredResponse{
+		Data: uiAlerts,
+	})
 }
 
 func (aH *APIHandler) getStats(w http.ResponseWriter, r *http.Request) {

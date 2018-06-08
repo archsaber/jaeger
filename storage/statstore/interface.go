@@ -8,4 +8,5 @@ import (
 type Reader interface {
 	GetStats(params *model.StatSeriesKey) ([]*model.StatSeries, error)
 	GetAlertRules(params *model.AlertRuleQueryParams) ([]*model.AlertRule, error)
+	GetAlerts(params *model.AlertsQueryParams) ([]*model.Alert, error)
 }

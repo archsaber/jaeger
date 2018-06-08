@@ -131,3 +131,20 @@ type StatSeries struct {
 	StatSeriesKey
 	Values []*StatPoint `json:"values"`
 }
+
+type Alert struct {
+	DomainID      string  `json:"domainID"`
+	Environment   string  `json:"environment"`
+	ServiceName   string  `json:"serviceName"`
+	OperationName string  `json:"operationName"`
+	Measure       string  `json:"measure"`
+	Submeasure    string  `json:"submeasure"`
+	OpenTime      int64   `json:"openTime"`
+	CloseTime     int64   `json:"closeTime"`
+	ActualValue   float64 `json:"actualValue"`
+	Limit         float64 `json:"limit"`
+	Duration      int64   `json:"duration"`
+	Type          string  `json:"type"`
+	Function      string  `json:"function"`
+	Upper         bool    `json:"upper"`
+}

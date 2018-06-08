@@ -269,7 +269,7 @@ CREATE TABLE IF NOT EXISTS ${keyspace}.alerts (
     actual_value        double,
     start_time          bigint,
     end_time            bigint,
-    PRIMARY KEY (domain_id, env, service_name, operation_name, measure, submeasure, start_time)
+    PRIMARY KEY (domain_id, env, service_name, start_time, operation_name, measure, submeasure)
 ) WITH compaction = {
         'compaction_window_size': '1', 
         'compaction_window_unit': 'DAYS', 
