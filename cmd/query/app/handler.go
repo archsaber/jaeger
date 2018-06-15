@@ -54,8 +54,8 @@ const (
 
 	defaultDependencyLookbackDuration  = time.Hour * 24
 	defaultTraceQueryLookbackDuration  = time.Hour * 24 * 2
-	defaultStatQueryLookbackDuration   = time.Minute * 30
-	defaultAlertsQueryLookbackDuration = time.Minute * 30
+	defaultStatQueryLookbackDuration   = time.Minute * 60
+	defaultAlertsQueryLookbackDuration = time.Minute * 60
 	defaultAPIPrefix                   = "api"
 
 	// milliseconds
@@ -391,6 +391,53 @@ func (aH *APIHandler) getAlerts(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// 2 hours worth of points at frequency of 10 sec
+const maxPointsPerSeries = 2 * 60 * 60 / 10
+
+func sampleSeries(series *model.StatSeries) *model.StatSeries {
+	values := series.Values
+	numPoints := len(series.Values)
+	if numPoints <= maxPointsPerSeries {
+		return series
+	}
+
+	start, end := float64(model.TimeAsEpochMicroseconds(series.StartTime)),
+		float64(model.TimeAsEpochMicroseconds(series.EndTime))
+	aggregateDuration := (end - start) / maxPointsPerSeries
+
+	sampledValues := make([]*model.StatPoint, 0, maxPointsPerSeries)
+	index := 0
+	for interval := 0; interval < maxPointsPerSeries; interval++ {
+		intervalEnd := start + float64(interval+1)*aggregateDuration
+		intervalAverage := make(map[string]float64)
+		intervalCount := make(map[string]float64)
+		for index < numPoints && float64(values[index].Timestamp) <= intervalEnd {
+			value := values[index]
+			for submeasure := range value.Value {
+				oldCount := intervalCount[submeasure]
+				oldAvg := intervalAverage[submeasure]
+
+				newCount := oldCount + 1
+				newAvg := (oldCount*oldAvg + value.Value[submeasure]) / newCount
+				intervalAverage[submeasure] = newAvg
+				intervalCount[submeasure] = newCount
+			}
+			index++
+		}
+		if len(intervalAverage) > 0 {
+			sampledValues = append(sampledValues, &model.StatPoint{
+				Timestamp: int64(intervalEnd),
+				Value:     intervalAverage,
+			})
+		}
+	}
+
+	return &model.StatSeries{
+		StatSeriesKey: series.StatSeriesKey,
+		Values:        sampledValues,
+	}
+}
+
 func (aH *APIHandler) getStats(w http.ResponseWriter, r *http.Request) {
 	sQuery, err := aH.statQueryParser.parseStatQuery(r)
 	if aH.handleError(w, err, http.StatusBadRequest) {
@@ -402,6 +449,7 @@ func (aH *APIHandler) getStats(w http.ResponseWriter, r *http.Request) {
 	}
 	uiStats := make([]*ui.StatSeries, 0, len(stats))
 	for _, stat := range stats {
+		stat = sampleSeries(stat)
 		uiValues := make([]*ui.StatPoint, 0, len(stat.Values))
 		for _, value := range stat.Values {
 			uiValues = append(uiValues, &ui.StatPoint{

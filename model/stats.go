@@ -21,6 +21,11 @@ type StatPoint struct {
 	Value     map[string]float64 `json:"value"`
 }
 
+type StatsSeriesParams struct {
+	StatSeriesKey
+	AllOperations bool `json:"allOperations"`
+}
+
 // StatSeriesKey is the primary key for a stats time-series
 type StatSeriesKey struct {
 	DomainID      gocql.UUID `json:"domainID"`

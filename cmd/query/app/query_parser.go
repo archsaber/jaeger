@@ -88,7 +88,7 @@ func (p *queryParser) parseAlertsQuery(r *http.Request) (*model.AlertsQueryParam
 	}, nil
 }
 
-func (p *queryParser) parseStatQuery(r *http.Request) (*model.StatSeriesKey, error) {
+func (p *queryParser) parseStatQuery(r *http.Request) (*model.StatsSeriesParams, error) {
 	startTime, err := p.parseTime(startTimeParam, r)
 	if err != nil {
 		return nil, err
@@ -98,14 +98,17 @@ func (p *queryParser) parseStatQuery(r *http.Request) (*model.StatSeriesKey, err
 		return nil, err
 	}
 
-	return &model.StatSeriesKey{
-		DomainID:      domainIDFromRequest(r),
-		Environment:   r.FormValue(envParam),
-		ServiceName:   r.FormValue(serviceParam),
-		OperationName: r.FormValue(operationParam),
-		Measure:       r.FormValue(measureParam),
-		StartTime:     startTime,
-		EndTime:       endTime,
+	return &model.StatsSeriesParams{
+		AllOperations: r.FormValue(allOperationsParam) == "y",
+		StatSeriesKey: model.StatSeriesKey{
+			DomainID:      domainIDFromRequest(r),
+			Environment:   r.FormValue(envParam),
+			ServiceName:   r.FormValue(serviceParam),
+			OperationName: r.FormValue(operationParam),
+			Measure:       r.FormValue(measureParam),
+			StartTime:     startTime,
+			EndTime:       endTime,
+		},
 	}, nil
 }
 

@@ -10,6 +10,10 @@ import (
 )
 
 const (
+	serviceBreakupStatQuery = `
+		SELECT operation_name, time_stamp, value
+		FROM service_breakup
+		WHERE domain_id = ? AND env = ? AND service_name = ? AND measure = ? AND time_stamp > ? AND time_stamp < ?`
 	serviceStatQuery = `
 		SELECT time_stamp, value
 		FROM service_stats
@@ -167,7 +171,8 @@ func (s *StatReader) GetAlertRules(params *model.AlertRuleQueryParams) ([]*model
 }
 
 // GetStats fetches stats data
-func (s *StatReader) GetStats(key *model.StatSeriesKey) ([]*model.StatSeries, error) {
+func (s *StatReader) GetStats(params *model.StatsSeriesParams) ([]*model.StatSeries, error) {
+	key := &params.StatSeriesKey
 	if err := validateStatSeriesKey(key); err != nil {
 		return nil, err
 	}
@@ -183,6 +188,42 @@ func (s *StatReader) GetStats(key *model.StatSeriesKey) ([]*model.StatSeries, er
 
 	for _, measure := range measures {
 		var q cassandra.Query
+		if params.AllOperations {
+			q = s.session.Query(serviceBreakupStatQuery, key.DomainID, key.Environment, key.ServiceName,
+				measure,
+				model.TimeAsEpochMicroseconds(key.StartTime),
+				model.TimeAsEpochMicroseconds(key.EndTime))
+
+			i := q.Consistency(s.consistency).Iter()
+
+			var operation string
+			var timeStamp int64
+			var valuesByOperation = make(map[string][]*model.StatPoint)
+			var value map[string]float64
+			for i.Scan(&operation, &timeStamp, &value) {
+				valuesForOperation, ok := valuesByOperation[operation]
+				if !ok {
+					valuesForOperation = make([]*model.StatPoint, 0, 200)
+				}
+				valuesForOperation = append(valuesForOperation, &model.StatPoint{
+					Timestamp: timeStamp,
+					Value:     value,
+				})
+				valuesByOperation[operation] = valuesForOperation
+			}
+
+			for op := range valuesByOperation {
+				keyWithMeasure := *key
+				keyWithMeasure.Measure = measure
+				keyWithMeasure.OperationName = op
+				retMe = append(retMe, &model.StatSeries{
+					StatSeriesKey: keyWithMeasure,
+					Values:        valuesByOperation[op],
+				})
+			}
+			continue
+		}
+
 		if key.OperationName != "" {
 			q = s.session.Query(operationStatQuery, key.DomainID, key.Environment, key.ServiceName,
 				key.OperationName, measure, model.TimeAsEpochMicroseconds(key.StartTime),
