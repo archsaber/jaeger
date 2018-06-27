@@ -15,12 +15,14 @@
 package json
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"math"
 	"testing"
 
+	gogojsonpb "github.com/gogo/protobuf/jsonpb"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -50,7 +52,7 @@ func testToDomain(t *testing.T, testParentSpanID bool) {
 		outStr, err := ioutil.ReadFile(out)
 		require.NoError(t, err)
 		var expectedSpan model.Span
-		require.NoError(t, json.Unmarshal(outStr, &expectedSpan))
+		require.NoError(t, gogojsonpb.Unmarshal(bytes.NewReader(outStr), &expectedSpan))
 
 		CompareModelSpans(t, &expectedSpan, actualSpan)
 	}
@@ -85,8 +87,9 @@ func TestFailureBadTypeTags(t *testing.T) {
 
 	badTagESSpan.Tags = []jModel.KeyValue{
 		{
-			Key:  "meh",
-			Type: "badType",
+			Key:   "meh",
+			Type:  "badType",
+			Value: "",
 		},
 	}
 	failingSpanTransformAnyMsg(t, &badTagESSpan)
@@ -156,8 +159,9 @@ func TestFailureBadLogs(t *testing.T) {
 			Timestamp: 0,
 			Fields: []jModel.KeyValue{
 				{
-					Key:  "sneh",
-					Type: "badType",
+					Key:   "sneh",
+					Value: "",
+					Type:  "badType",
 				},
 			},
 		},
@@ -167,13 +171,37 @@ func TestFailureBadLogs(t *testing.T) {
 
 func TestRevertKeyValueOfType(t *testing.T) {
 	td := toDomain{}
-	tag := &jModel.KeyValue{
-		Key:   "sneh",
-		Type:  "badType",
-		Value: "someString",
+	tests := []struct {
+		kv  *jModel.KeyValue
+		err string
+	}{
+		{
+			kv: &jModel.KeyValue{
+				Key:   "sneh",
+				Type:  "badType",
+				Value: "someString",
+			},
+			err: "not a valid ValueType string",
+		},
+		{
+			kv:  &jModel.KeyValue{},
+			err: "invalid nil Value",
+		},
+		{
+			kv: &jModel.KeyValue{
+				Value: 123,
+			},
+			err: "non-string Value of type",
+		},
 	}
-	_, err := td.convertKeyValueOfType(tag, model.ValueType(7))
-	assert.EqualError(t, err, "not a valid ValueType string <invalid>")
+	for _, test := range tests {
+		t.Run(test.err, func(t *testing.T) {
+			tag := test.kv
+			_, err := td.convertKeyValue(tag)
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), test.err)
+		})
+	}
 }
 
 func TestFailureBadRefs(t *testing.T) {
@@ -220,8 +248,9 @@ func TestFailureBadProcess(t *testing.T) {
 
 	badTags := []jModel.KeyValue{
 		{
-			Key:  "meh",
-			Type: "badType",
+			Key:   "meh",
+			Value: "",
+			Type:  "badType",
 		},
 	}
 	badProcessESSpan.Process = &jModel.Process{
