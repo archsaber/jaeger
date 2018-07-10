@@ -23,6 +23,7 @@ import (
 	"github.com/spf13/viper"
 	"go.uber.org/zap"
 
+	ddFlags "github.com/DataDog/datadog-trace-agent/flags"
 	"github.com/jaegertracing/jaeger/cmd/agent/app"
 	"github.com/jaegertracing/jaeger/cmd/flags"
 	"github.com/jaegertracing/jaeger/pkg/config"
@@ -75,6 +76,7 @@ func main() {
 		flags.AddConfigFileFlag,
 		flags.AddLoggingFlag,
 		app.AddFlags,
+		ddFlags.AddFlags,
 		metrics.AddFlags,
 	)
 

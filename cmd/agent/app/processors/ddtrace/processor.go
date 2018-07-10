@@ -99,7 +99,7 @@ func (r *Processor) restartOnTokenChange(logger *zap.Logger) {
 }
 
 func newDDAgentConfig(c ProcessorConfig) (*ddconfig.AgentConfig, error) {
-	conf := ddconfig.NewDefaultAgentConfig()
+	conf := ddconfig.New()
 	conf.ConnectionLimit = c.ConnectionLimit
 	conf.ReceiverTimeout = c.ReceiverTimeout
 	hostPortSplit := strings.Split(c.HostPort, ":")
