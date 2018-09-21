@@ -51,6 +51,7 @@ const (
 	defaultDDReceiverTimeout = 0
 	defaultDDExtraSampleRate = 1.0
 	defaultDDMaxTPS          = 10
+	defaultDDLogLevel        = "INFO"
 	defaultAuthTokenFile     = "/etc/opt/archsaber/archsaber.token"
 
 	jaegerModel Model = "jaeger"

@@ -6,6 +6,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/DataDog/datadog-trace-agent/cmd/ddtrace"
 	ddconfig "github.com/DataDog/datadog-trace-agent/config"
 	"github.com/jaegertracing/jaeger/cmd/agent/app/auth"
 	"go.uber.org/zap"
@@ -21,6 +22,7 @@ type ProcessorConfig struct {
 	ReceiverTimeout int     `yaml:"receiverTimeout"`
 	ExtraSampleRate float64 `yaml:"extraSampleRate"`
 	MaxTPS          float64 `yaml:"maxtps"`
+	LogLevel        string  `yaml:"logLevel"`
 }
 
 // Processor is a collector that uses HTTP protocol and just holds
@@ -38,6 +40,11 @@ type Processor struct {
 // NewProcessor returns a pointer to a new DDServer
 func (c ProcessorConfig) NewProcessor() (*Processor, error) {
 	ddAgentConfig, err := newDDAgentConfig(c)
+	if err != nil {
+		return nil, err
+	}
+
+	err = ddtrace.SetupLoggerFromAgentConfig(ddAgentConfig)
 	if err != nil {
 		return nil, err
 	}
@@ -113,6 +120,7 @@ func newDDAgentConfig(c ProcessorConfig) (*ddconfig.AgentConfig, error) {
 	}
 	conf.ReceiverPort = int(receiverPort)
 	conf.APIKey = auth.GetToken()
+	conf.LogLevel = c.LogLevel
 	conf.LogFilePath = logFilePath
 	conf.ExtraSampleRate = c.ExtraSampleRate
 	conf.MaxTPS = c.MaxTPS

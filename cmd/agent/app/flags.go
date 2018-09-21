@@ -38,6 +38,7 @@ const (
 	ddServerReceiverTimeout   = "dd-server.receiver-timeout"
 	ddServerExtraSampleRate   = "dd-server.extra-sample-rate"
 	ddServerMaxTPS            = "dd-server.max-tps"
+	ddServerLogLevel          = "dd-server.log-level"
 	discoveryMinPeers         = "discovery.min-peers"
 )
 
@@ -100,6 +101,10 @@ func AddFlags(flags *flag.FlagSet) {
 		ddServerMaxTPS,
 		defaultDDMaxTPS,
 		"max tps")
+	flags.String(
+		ddServerLogLevel,
+		defaultDDLogLevel,
+		"log level of the ddtrace processor receiving traces")
 }
 
 // InitFromViper initializes Builder with properties retrieved from Viper.
@@ -130,5 +135,6 @@ func (b *Builder) InitFromViper(v *viper.Viper) *Builder {
 	b.DDTraceProcessorConfig.ReceiverTimeout = v.GetInt(ddServerReceiverTimeout)
 	b.DDTraceProcessorConfig.ExtraSampleRate = v.GetFloat64(ddServerExtraSampleRate)
 	b.DDTraceProcessorConfig.MaxTPS = v.GetFloat64(ddServerMaxTPS)
+	b.DDTraceProcessorConfig.LogLevel = v.GetString(ddServerLogLevel)
 	return b
 }
