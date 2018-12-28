@@ -27,6 +27,8 @@ import (
 	"strings"
 	"time"
 
+	clickhouse "arch-go-libs/chql"
+
 	"github.com/DataDog/datadog-trace-agent/model"
 	"github.com/DataDog/datadog-trace-agent/writer"
 	"github.com/apache/thrift/lib/go/thrift"
@@ -180,37 +182,46 @@ func (aH *APIHandler) handleDDStats(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+
 	var kafkaMessages []goKafka.Message
+	var clickhouseRows [][]interface{}
 	var rawMessage bytes.Buffer
 	for _, statBucket := range statsPayload.Stats {
 		for _, count := range statBucket.Counts {
 			measure := count.Measure
 			service := count.TagSet.Get("service").Value
 			resource := count.TagSet.Get("resource").Value
+			// Stats are sent only for top level spans
+			operation := getJaegerOperationName(count.Name, resource, true)
 			env := count.TagSet.Get("env").Value
 			httpstatuscode := count.TagSet.Get("http.status_code").Value
 			sublayerService := count.TagSet.Get("sublayer_service").Value
 			sublayerType := count.TagSet.Get("sublayer_type").Value
 			submeasure := measure
+			clickhouseSubLayer := ""
 			if measure == "_sublayers.duration.by_service" {
 				measure = jModel.DURATION_BY_SERVICE
 				submeasure = sublayerService
+				clickhouseSubLayer = sublayerService
 			} else if measure == "_sublayers.duration.by_type" {
 				measure = jModel.DURATION_BY_TYPE
 				submeasure = sublayerType
+				clickhouseSubLayer = sublayerType
+			} else if measure == "_sublayers.span_count" {
+				measure = jModel.SPAN_COUNT
+				submeasure = jModel.SPAN_COUNT
 			}
 
 			avro := &avroKafka.StatsPoint{
-				Start:      statBucket.Start,
-				Duration:   statBucket.Duration,
-				Measure:    measure,
-				Submeasure: submeasure,
-				Value:      count.Value,
-				DomainID:   domainid,
-				NodeUUID:   nodeuuid,
-				Service:    service,
-				// Stats are sent only for top level spans
-				Operation:      getJaegerOperationName(count.Name, resource, true),
+				Start:          statBucket.Start,
+				Duration:       statBucket.Duration,
+				Measure:        measure,
+				Submeasure:     submeasure,
+				Value:          count.Value,
+				DomainID:       domainid,
+				NodeUUID:       nodeuuid,
+				Service:        service,
+				Operation:      operation,
 				Env:            env,
 				HTTPStatusCode: httpstatuscode,
 			}
@@ -227,8 +238,24 @@ func (aH *APIHandler) handleDDStats(w http.ResponseWriter, r *http.Request) {
 				Value: out,
 				Time:  time.Unix(0, avro.Start+avro.Duration),
 			})
+
+			clickhouseRows = append(clickhouseRows, []interface{}{
+				domainid, env, service, operation, measure, clickhouseSubLayer, nodeuuid,
+				time.Unix(0, avro.Start+avro.Duration), count.Value,
+			})
 		}
 	}
+
+	// send stats to clickhouse (for events of interest)
+	clickhouse.QueueCHQLWrite(clickhouse.InsertTx{
+		Database: "apmdb",
+		Table:    "metrics",
+		Fields: []string{"Domain", "Env", "Service", "Operation", "Metric", "SubLayer", "NodeUUID",
+			"LogTime", "Value"},
+		Values: clickhouseRows,
+	})
+
+	// send stats to kafka (for apm dashboard)
 	aH.statsProducer.WriteMessages(context.Background(), kafkaMessages...)
 }
 

@@ -13,6 +13,7 @@ const (
 	DURATION            = "duration"
 	DURATION_BY_SERVICE = "duration.by_service"
 	DURATION_BY_TYPE    = "duration.by_type"
+	SPAN_COUNT          = "span_count"
 )
 
 // StatPoint represents a single data point
