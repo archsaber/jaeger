@@ -258,11 +258,16 @@ func (aH *APIHandler) setAlertRule(w http.ResponseWriter, r *http.Request) {
 		aH.handleError(w, err, http.StatusInternalServerError)
 		return
 	}
-	aH.alertsProducer.WriteMessages(context.Background(), goKafka.Message{
+
+	err = aH.alertsProducer.WriteMessages(context.Background(), goKafka.Message{
 		Key:   []byte(rule.DomainID),
 		Value: rawMessage.Bytes(),
 		Time:  time.Unix(rule.CreationTime, 0),
 	})
+	if err != nil {
+		aH.handleError(w, err, http.StatusInternalServerError)
+		return
+	}
 
 	aH.writeJSON(w, r, &structuredResponse{
 		Data: "ok",
